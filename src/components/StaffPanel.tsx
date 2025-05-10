@@ -14,17 +14,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from '@/components/ui/use-toast';
-import { companies, students } from '../data/mockData';
+import { companies, students, Student } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import ResumeViewer from './ResumeViewer';
 
 const StaffPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState("students");
-  const [selectedStudent, setSelectedStudent] = useState<typeof students[0] | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
   const [localStudents, setLocalStudents] = useState(students);
   
-  const handleViewResume = (student: typeof students[0]) => {
+  const handleViewResume = (student: Student) => {
     setSelectedStudent(student);
     setIsResumeDialogOpen(true);
   };
@@ -32,10 +32,10 @@ const StaffPanel: React.FC = () => {
   const handleApproveResume = () => {
     if (selectedStudent) {
       const updatedStudents = localStudents.map(s => 
-        s.id === selectedStudent.id ? { ...s, resumeStatus: 'approved' } : s
+        s.id === selectedStudent.id ? { ...s, resumeStatus: 'approved' as const } : s
       );
       setLocalStudents(updatedStudents);
-      setSelectedStudent({ ...selectedStudent, resumeStatus: 'approved' });
+      setSelectedStudent({ ...selectedStudent, resumeStatus: 'approved' as const });
       
       toast({
         title: "Resume Approved",
@@ -47,10 +47,10 @@ const StaffPanel: React.FC = () => {
   const handleRejectResume = () => {
     if (selectedStudent) {
       const updatedStudents = localStudents.map(s => 
-        s.id === selectedStudent.id ? { ...s, resumeStatus: 'rejected' } : s
+        s.id === selectedStudent.id ? { ...s, resumeStatus: 'rejected' as const } : s
       );
       setLocalStudents(updatedStudents);
-      setSelectedStudent({ ...selectedStudent, resumeStatus: 'rejected' });
+      setSelectedStudent({ ...selectedStudent, resumeStatus: 'rejected' as const });
       
       toast({
         title: "Revision Requested",
@@ -170,3 +170,4 @@ const StaffPanel: React.FC = () => {
 };
 
 export default StaffPanel;
+
