@@ -1,13 +1,37 @@
-// Update this page (the content is just a fallback if you fail to update the page)
 
-const Index = () => {
+import React, { useEffect } from 'react';
+import Login from '../components/Login';
+import AdminPanel from '../components/AdminPanel';
+import StaffPanel from '../components/StaffPanel';
+import StudentPanel from '../components/StudentPanel';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { students } from '../data/mockData';
+
+const PanelRouter: React.FC = () => {
+  const { currentUser } = useAuth();
+
+  if (!currentUser) {
+    return <Login />;
+  }
+
+  switch (currentUser.role) {
+    case 'admin':
+      return <AdminPanel />;
+    case 'staff':
+      return <StaffPanel />;
+    case 'student':
+      const student = students.find(s => s.userId === currentUser.id);
+      return <StudentPanel studentId={student?.id || currentUser.id} />;
+    default:
+      return <Login />;
+  }
+};
+
+const Index: React.FC = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
-      </div>
-    </div>
+    <AuthProvider>
+      <PanelRouter />
+    </AuthProvider>
   );
 };
 
