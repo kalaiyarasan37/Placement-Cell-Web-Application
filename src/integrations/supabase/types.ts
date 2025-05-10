@@ -9,7 +9,103 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      companies: {
+        Row: {
+          created_at: string
+          deadline: string
+          description: string
+          id: string
+          location: string
+          name: string
+          positions: string[]
+          posted_by: string
+          requirements: string[]
+        }
+        Insert: {
+          created_at?: string
+          deadline: string
+          description: string
+          id?: string
+          location: string
+          name: string
+          positions?: string[]
+          posted_by: string
+          requirements?: string[]
+        }
+        Update: {
+          created_at?: string
+          deadline?: string
+          description?: string
+          id?: string
+          location?: string
+          name?: string
+          positions?: string[]
+          posted_by?: string
+          requirements?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "companies_posted_by_fkey"
+            columns: ["posted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          name: string
+          role: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          role?: string
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          created_at: string
+          id: string
+          resume_status: string | null
+          resume_url: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          resume_status?: string | null
+          resume_url?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          resume_status?: string | null
+          resume_url?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

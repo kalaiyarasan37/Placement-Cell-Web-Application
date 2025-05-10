@@ -1,27 +1,25 @@
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import Login from '../components/Login';
 import AdminPanel from '../components/AdminPanel';
 import StaffPanel from '../components/StaffPanel';
 import StudentPanel from '../components/StudentPanel';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
-import { students } from '../data/mockData';
 
 const PanelRouter: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, userRole } = useAuth();
 
-  if (!currentUser) {
+  if (!currentUser || !userRole) {
     return <Login />;
   }
 
-  switch (currentUser.role) {
+  switch (userRole) {
     case 'admin':
       return <AdminPanel />;
     case 'staff':
       return <StaffPanel />;
     case 'student':
-      const student = students.find(s => s.userId === currentUser.id);
-      return <StudentPanel studentId={student?.id || currentUser.id} />;
+      return <StudentPanel studentId={currentUser.id} />;
     default:
       return <Login />;
   }

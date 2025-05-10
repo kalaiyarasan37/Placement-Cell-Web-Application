@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from '@/components/ui/use-toast';
 import { Company } from '../data/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CompanyFormProps {
   isOpen: boolean;
@@ -28,6 +30,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
   onSave,
   company
 }) => {
+  const { currentUser } = useAuth();
   const [formData, setFormData] = useState<Partial<Company>>(
     company || {
       name: '',
@@ -36,12 +39,13 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       positions: [],
       requirements: [],
       deadline: new Date().toISOString().split('T')[0],
-      postedBy: 'Current User',
+      postedBy: currentUser?.id || '',
     }
   );
   
   const [newPosition, setNewPosition] = useState('');
   const [newRequirement, setNewRequirement] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -84,6 +88,62 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
     }
   };
 
+  const saveToDatabase = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      // Format the data for Supabase
+      const companyData = {
+        name: formData.name,
+        description: formData.description,
+        location: formData.location,
+        positions: formData.positions,
+        requirements: formData.requirements,
+        deadline: formData.deadline,
+        posted_by: currentUser?.id
+      };
+      
+      let result;
+      
+      if (company?.id) {
+        // Update existing company
+        result = await supabase
+          .from('companies')
+          .update(companyData)
+          .eq('id', company.id);
+      } else {
+        // Insert new company
+        result = await supabase
+          .from('companies')
+          .insert(companyData)
+          .select();
+      }
+      
+      if (result.error) {
+        throw result.error;
+      }
+      
+      // Call the onSave prop with the Supabase response data
+      const savedCompany = result.data?.[0] || formData;
+      onSave(savedCompany);
+      
+      toast({
+        title: company ? "Company Updated" : "Company Added",
+        description: `${formData.name} has been ${company ? "updated" : "added"} successfully.`,
+      });
+    } catch (error) {
+      console.error('Error saving company:', error);
+      toast({
+        title: "Error",
+        description: `Failed to ${company ? "update" : "add"} company: ${error.message}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+      onClose();
+    }
+  };
+
   const handleSubmit = () => {
     // Basic validation
     if (!formData.name || !formData.description || !formData.location || !formData.deadline) {
@@ -103,9 +163,8 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       });
       return;
     }
-
-    onSave(formData);
-    onClose();
+    
+    saveToDatabase();
   };
 
   return (
@@ -217,8 +276,10 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
         </div>
         
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit}>{company ? 'Update Company' : 'Add Company'}</Button>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting}>
+            {isSubmitting ? "Saving..." : company ? 'Update Company' : 'Add Company'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
