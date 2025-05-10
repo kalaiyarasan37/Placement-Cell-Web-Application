@@ -4,11 +4,55 @@ import NavBar from './NavBar';
 import UserManagement from './UserManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { companies, students } from '../data/mockData';
+import { Button } from "@/components/ui/button";
+import { companies, students, users, User } from '../data/mockData';
 import CompanyCard from './CompanyCard';
+import CompanyForm from './CompanyForm';
+import { Plus } from 'lucide-react';
+import { Company } from '../data/mockData';
+
+// Filter users by role for separate management sections
+const staffUsers = users.filter(user => user.role === 'staff');
+const studentUsers = users.filter(user => user.role === 'student');
 
 const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [localCompanies, setLocalCompanies] = useState(companies);
+  const [isCompanyFormOpen, setIsCompanyFormOpen] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | undefined>(undefined);
+
+  const handleAddCompany = () => {
+    setSelectedCompany(undefined);
+    setIsCompanyFormOpen(true);
+  };
+
+  const handleEditCompany = (company: Company) => {
+    setSelectedCompany(company);
+    setIsCompanyFormOpen(true);
+  };
+
+  const handleDeleteCompany = (companyId: string) => {
+    setLocalCompanies(localCompanies.filter(company => company.id !== companyId));
+  };
+
+  const handleSaveCompany = (companyData: Partial<Company>) => {
+    if (selectedCompany) {
+      // Edit existing company
+      const updatedCompanies = localCompanies.map(c => 
+        c.id === selectedCompany.id ? { ...c, ...companyData } as Company : c
+      );
+      setLocalCompanies(updatedCompanies);
+    } else {
+      // Add new company
+      const newCompany = {
+        ...companyData,
+        id: Date.now().toString(),
+        postedBy: "Admin", // This would come from the current user in a real app
+      } as Company;
+      
+      setLocalCompanies([...localCompanies, newCompany]);
+    }
+  };
 
   return (
     <div className="panel-container">
@@ -18,7 +62,8 @@ const AdminPanel: React.FC = () => {
         <Tabs defaultValue="dashboard" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-8">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="users">User Management</TabsTrigger>
+            <TabsTrigger value="student-management">Student Management</TabsTrigger>
+            <TabsTrigger value="staff-management">Staff Management</TabsTrigger>
             <TabsTrigger value="companies">Companies</TabsTrigger>
           </TabsList>
           
@@ -33,7 +78,7 @@ const AdminPanel: React.FC = () => {
                 <CardContent>
                   <div className="text-3xl font-bold">{students.length + 2}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {students.length} students + 1 admin + 1 staff
+                    {students.length} students + {staffUsers.length} staff + {users.filter(u => u.role === 'admin').length} admin
                   </p>
                 </CardContent>
               </Card>
@@ -108,25 +153,44 @@ const AdminPanel: React.FC = () => {
             </Card>
           </TabsContent>
           
-          <TabsContent value="users">
-            <UserManagement />
+          <TabsContent value="student-management">
+            <UserManagement initialUsers={studentUsers} userType="student" />
+          </TabsContent>
+          
+          <TabsContent value="staff-management">
+            <UserManagement initialUsers={staffUsers} userType="staff" />
           </TabsContent>
           
           <TabsContent value="companies">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">Company Listings</h2>
+              <Button onClick={handleAddCompany}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Company
+              </Button>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {companies.map(company => (
+              {localCompanies.map(company => (
                 <CompanyCard 
                   key={company.id}
                   company={company}
                   isEditable={true}
-                  onEdit={() => {}}
-                  onDelete={() => {}}
+                  onEdit={() => handleEditCompany(company)}
+                  onDelete={() => handleDeleteCompany(company.id)}
                 />
               ))}
             </div>
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Company Form Dialog */}
+      <CompanyForm 
+        isOpen={isCompanyFormOpen}
+        onClose={() => setIsCompanyFormOpen(false)}
+        onSave={handleSaveCompany}
+        company={selectedCompany}
+      />
     </div>
   );
 };

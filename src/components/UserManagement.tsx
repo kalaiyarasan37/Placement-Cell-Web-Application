@@ -32,8 +32,16 @@ import { toast } from "@/components/ui/use-toast";
 import { Edit, Plus, Trash } from 'lucide-react';
 import { User, users as mockUsers } from '../data/mockData';
 
-const UserManagement: React.FC = () => {
-  const [users, setUsers] = useState<User[]>(mockUsers);
+interface UserManagementProps {
+  initialUsers?: User[];
+  userType?: 'admin' | 'staff' | 'student';
+}
+
+const UserManagement: React.FC<UserManagementProps> = ({ 
+  initialUsers = mockUsers,
+  userType
+}) => {
+  const [users, setUsers] = useState<User[]>(initialUsers);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -43,7 +51,7 @@ const UserManagement: React.FC = () => {
     username: '',
     password: '',
     name: '',
-    role: 'student' as 'admin' | 'staff' | 'student',
+    role: userType || 'student' as 'admin' | 'staff' | 'student',
   });
 
   const handleAddUser = () => {
@@ -52,7 +60,7 @@ const UserManagement: React.FC = () => {
       username: '',
       password: '',
       name: '',
-      role: 'student',
+      role: userType || 'student',
     });
     setIsAddDialogOpen(true);
   };
@@ -109,19 +117,27 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const roleToTitle = {
+    'admin': 'Administrators',
+    'staff': 'Staff Members',
+    'student': 'Students'
+  };
+
   return (
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
-            <CardTitle>User Management</CardTitle>
+            <CardTitle>{userType ? roleToTitle[userType] : 'User Management'}</CardTitle>
             <CardDescription>
-              Add, edit, or remove users from the system
+              {userType 
+                ? `Manage ${userType} accounts in the system` 
+                : 'Add, edit, or remove users from the system'}
             </CardDescription>
           </div>
           <Button onClick={handleAddUser}>
             <Plus className="h-4 w-4 mr-2" />
-            Add User
+            Add {userType ? roleToTitle[userType].slice(0, -1) : 'User'}
           </Button>
         </div>
       </CardHeader>
@@ -131,7 +147,7 @@ const UserManagement: React.FC = () => {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Username</TableHead>
-              <TableHead>Role</TableHead>
+              {!userType && <TableHead>Role</TableHead>}
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -140,7 +156,7 @@ const UserManagement: React.FC = () => {
               <TableRow key={user.id}>
                 <TableCell>{user.name}</TableCell>
                 <TableCell>{user.username}</TableCell>
-                <TableCell className="capitalize">{user.role}</TableCell>
+                {!userType && <TableCell className="capitalize">{user.role}</TableCell>}
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
                     <Button 
@@ -170,7 +186,7 @@ const UserManagement: React.FC = () => {
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle>
+            <DialogTitle>Add New {userType ? roleToTitle[userType].slice(0, -1) : 'User'}</DialogTitle>
             <DialogDescription>
               Create a new user account in the system.
             </DialogDescription>
@@ -204,22 +220,24 @@ const UserManagement: React.FC = () => {
                 onChange={handleInputChange} 
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select 
-                value={formData.role} 
-                onValueChange={handleRoleChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="staff">Staff</SelectItem>
-                  <SelectItem value="student">Student</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!userType && (
+              <div className="space-y-2">
+                <Label htmlFor="role">Role</Label>
+                <Select 
+                  value={formData.role} 
+                  onValueChange={handleRoleChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                    <SelectItem value="student">Student</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
@@ -268,22 +286,24 @@ const UserManagement: React.FC = () => {
               />
               <p className="text-xs text-muted-foreground">Leave blank to keep current password</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-role">Role</Label>
-              <Select 
-                value={formData.role} 
-                onValueChange={handleRoleChange}
-              >
-                <SelectTrigger id="edit-role">
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="staff">Staff</SelectItem>
-                  <SelectItem value="student">Student</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!userType && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-role">Role</Label>
+                <Select 
+                  value={formData.role} 
+                  onValueChange={handleRoleChange}
+                >
+                  <SelectTrigger id="edit-role">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                    <SelectItem value="student">Student</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>

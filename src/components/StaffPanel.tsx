@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import NavBar from './NavBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { 
   Table, TableBody, TableCell, TableHead, 
   TableHeader, TableRow 
@@ -14,15 +15,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from '@/components/ui/use-toast';
-import { companies, students, Student } from '../data/mockData';
+import { companies, students, Student, Company } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import ResumeViewer from './ResumeViewer';
+import CompanyForm from './CompanyForm';
+import { Plus } from 'lucide-react';
 
 const StaffPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState("students");
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
   const [localStudents, setLocalStudents] = useState(students);
+  const [localCompanies, setLocalCompanies] = useState(companies);
+  const [isCompanyFormOpen, setIsCompanyFormOpen] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | undefined>(undefined);
   
   const handleViewResume = (student: Student) => {
     setSelectedStudent(student);
@@ -66,6 +72,51 @@ const StaffPanel: React.FC = () => {
       );
       setLocalStudents(updatedStudents);
       setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
+    }
+  };
+
+  const handleAddCompany = () => {
+    setSelectedCompany(undefined);
+    setIsCompanyFormOpen(true);
+  };
+
+  const handleEditCompany = (company: Company) => {
+    setSelectedCompany(company);
+    setIsCompanyFormOpen(true);
+  };
+
+  const handleDeleteCompany = (companyId: string) => {
+    setLocalCompanies(localCompanies.filter(company => company.id !== companyId));
+    toast({
+      title: "Company Deleted",
+      description: "The company has been removed from the system.",
+    });
+  };
+
+  const handleSaveCompany = (companyData: Partial<Company>) => {
+    if (selectedCompany) {
+      // Edit existing company
+      const updatedCompanies = localCompanies.map(c => 
+        c.id === selectedCompany.id ? { ...c, ...companyData } as Company : c
+      );
+      setLocalCompanies(updatedCompanies);
+      toast({
+        title: "Company Updated",
+        description: `${companyData.name} has been updated successfully.`,
+      });
+    } else {
+      // Add new company
+      const newCompany = {
+        ...companyData,
+        id: Date.now().toString(),
+        postedBy: "Staff Member", // This would come from the current user in a real app
+      } as Company;
+      
+      setLocalCompanies([...localCompanies, newCompany]);
+      toast({
+        title: "Company Added",
+        description: `${newCompany.name} has been added to the system.`,
+      });
     }
   };
   
@@ -130,14 +181,21 @@ const StaffPanel: React.FC = () => {
           </TabsContent>
           
           <TabsContent value="companies">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">Company Listings</h2>
+              <Button onClick={handleAddCompany}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Company
+              </Button>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {companies.map(company => (
+              {localCompanies.map(company => (
                 <CompanyCard 
                   key={company.id}
                   company={company}
                   isEditable={true}
-                  onEdit={() => {}}
-                  onDelete={() => {}}
+                  onEdit={() => handleEditCompany(company)}
+                  onDelete={() => handleDeleteCompany(company.id)}
                 />
               ))}
             </div>
@@ -165,9 +223,16 @@ const StaffPanel: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Company Form Dialog */}
+      <CompanyForm 
+        isOpen={isCompanyFormOpen}
+        onClose={() => setIsCompanyFormOpen(false)}
+        onSave={handleSaveCompany}
+        company={selectedCompany}
+      />
     </div>
   );
 };
 
 export default StaffPanel;
-
