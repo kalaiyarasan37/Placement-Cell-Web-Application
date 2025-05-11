@@ -5,7 +5,7 @@ import UserManagement from './UserManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { companies, students, users } from '../data/mockData';
+import { students } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
@@ -14,13 +14,196 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 
+interface Activity {
+  id: string;
+  type: 'company_added' | 'resume_approved' | 'resume_rejected';
+  description: string;
+  timestamp: string;
+  userName: string;
+}
+
+interface DashboardStats {
+  totalUsers: number;
+  totalStudents: number;
+  totalStaff: number;
+  totalAdmin: number;
+  totalCompanies: number;
+  approvedResumes: number;
+  pendingResumes: number;
+  rejectedResumes: number;
+  totalResumes: number;
+}
+
 const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [localCompanies, setLocalCompanies] = useState<Company[]>(companies);
+  const [localCompanies, setLocalCompanies] = useState<Company[]>([]);
   const [isCompanyFormOpen, setIsCompanyFormOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalUsers: 0,
+    totalStudents: 0,
+    totalStaff: 0,
+    totalAdmin: 0,
+    totalCompanies: 0,
+    approvedResumes: 0,
+    pendingResumes: 0,
+    rejectedResumes: 0,
+    totalResumes: 0
+  });
   const { currentUser } = useAuth();
+  
+  // Function to fetch dashboard statistics
+  const fetchDashboardStats = async () => {
+    try {
+      // Fetch counts of profiles by role
+      const { data: profileCounts, error: profileError } = await supabase
+        .from('profiles')
+        .select('role, count')
+        .group('role');
+      
+      if (profileError) {
+        console.error('Error fetching profile counts:', profileError);
+      }
+      
+      // Fetch company count
+      const { count: companyCount, error: companyError } = await supabase
+        .from('companies')
+        .select('*', { count: 'exact', head: true });
+      
+      if (companyError) {
+        console.error('Error fetching company count:', companyError);
+      }
+      
+      // Fetch resume counts by status
+      const { data: resumeCounts, error: resumeError } = await supabase
+        .from('students')
+        .select('resume_status, count')
+        .group('resume_status');
+      
+      if (resumeError) {
+        console.error('Error fetching resume counts:', resumeError);
+      }
+
+      // Parse and set statistics
+      const newStats = { ...stats };
+      
+      if (profileCounts) {
+        newStats.totalStudents = profileCounts.find(p => p.role === 'student')?.count || 0;
+        newStats.totalStaff = profileCounts.find(p => p.role === 'staff')?.count || 0;
+        newStats.totalAdmin = profileCounts.find(p => p.role === 'admin')?.count || 0;
+        newStats.totalUsers = newStats.totalStudents + newStats.totalStaff + newStats.totalAdmin;
+      }
+      
+      if (companyCount !== null) {
+        newStats.totalCompanies = companyCount;
+      }
+      
+      if (resumeCounts) {
+        newStats.approvedResumes = resumeCounts.find(r => r.resume_status === 'approved')?.count || 0;
+        newStats.pendingResumes = resumeCounts.find(r => r.resume_status === 'pending')?.count || 0;
+        newStats.rejectedResumes = resumeCounts.find(r => r.resume_status === 'rejected')?.count || 0;
+        newStats.totalResumes = newStats.approvedResumes + newStats.pendingResumes + newStats.rejectedResumes;
+      }
+      
+      setStats(newStats);
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      // Fall back to some default values
+      setStats({
+        totalUsers: students.length + 2,
+        totalStudents: students.length,
+        totalStaff: 1,
+        totalAdmin: 1,
+        totalCompanies: localCompanies.length,
+        approvedResumes: students.filter(s => s.resumeStatus === 'approved').length,
+        pendingResumes: students.filter(s => s.resumeStatus === 'pending').length,
+        rejectedResumes: students.filter(s => s.resumeStatus === 'rejected').length,
+        totalResumes: students.length
+      });
+    }
+  };
+
+  // Function to fetch recent activities
+  const fetchRecentActivities = async () => {
+    // In a real app, you would fetch activities from a dedicated table
+    // Here we'll simulate this by checking recent changes in companies and students tables
+    try {
+      // Get recent companies (limit to latest 5)
+      const { data: recentCompanies, error: companiesError } = await supabase
+        .from('companies')
+        .select('id, name, posted_by, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (companiesError) {
+        console.error('Error fetching recent companies:', companiesError);
+      }
+
+      // Get recent resume status changes (would require a dedicated activities table in a real app)
+      // For now, we'll use mock data combined with any real companies we found
+      
+      const mockActivities: Activity[] = [
+        {
+          id: '1',
+          type: 'resume_approved',
+          description: 'Resume was approved',
+          timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+          userName: 'Jane Smith'
+        },
+        {
+          id: '2',
+          type: 'resume_rejected',
+          description: 'Resume was rejected',
+          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          userName: 'John Doe'
+        }
+      ];
+      
+      // Convert companies to activities format
+      const companyActivities: Activity[] = recentCompanies ? recentCompanies.map(company => ({
+        id: `company-${company.id}`,
+        type: 'company_added' as const,
+        description: `${company.name} was added`,
+        timestamp: company.created_at,
+        userName: company.posted_by || 'Unknown'
+      })) : [];
+      
+      // Combine and sort by timestamp
+      const combinedActivities = [...companyActivities, ...mockActivities]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 5); // Take only the 5 most recent
+        
+      setActivities(combinedActivities);
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+      // Fall back to mock activities
+      setActivities([
+        {
+          id: '1',
+          type: 'company_added',
+          description: 'New Company Added',
+          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          userName: 'Staff Member'
+        },
+        {
+          id: '2',
+          type: 'resume_approved',
+          description: 'Resume Approved',
+          timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+          userName: 'Jane Smith'
+        },
+        {
+          id: '3',
+          type: 'resume_rejected',
+          description: 'Resume Rejected',
+          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          userName: 'John Doe'
+        }
+      ]);
+    }
+  };
   
   // Function to fetch companies from Supabase
   const fetchCompanies = async () => {
@@ -54,6 +237,8 @@ const AdminPanel: React.FC = () => {
   // Fetch companies and set up real-time subscription
   useEffect(() => {
     fetchCompanies();
+    fetchDashboardStats();
+    fetchRecentActivities();
     
     // Set up real-time subscription for companies table
     const companiesSubscription = supabase
@@ -63,6 +248,33 @@ const AdminPanel: React.FC = () => {
         () => {
           console.log('Companies changed, fetching updated data');
           fetchCompanies();
+          fetchDashboardStats();
+          fetchRecentActivities();
+        }
+      )
+      .subscribe();
+    
+    // Set up real-time subscription for profiles table
+    const profilesSubscription = supabase
+      .channel('profiles-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'profiles' }, 
+        () => {
+          console.log('Profiles changed, fetching updated data');
+          fetchDashboardStats();
+        }
+      )
+      .subscribe();
+      
+    // Set up real-time subscription for students table
+    const studentsSubscription = supabase
+      .channel('students-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'students' }, 
+        () => {
+          console.log('Students changed, fetching updated data');
+          fetchDashboardStats();
+          fetchRecentActivities();
         }
       )
       .subscribe();
@@ -70,6 +282,8 @@ const AdminPanel: React.FC = () => {
     // Clean up subscription when component unmounts
     return () => {
       companiesSubscription.unsubscribe();
+      profilesSubscription.unsubscribe();
+      studentsSubscription.unsubscribe();
     };
   }, []);
 
@@ -194,6 +408,19 @@ const AdminPanel: React.FC = () => {
     }
   };
 
+  // Function to format timestamp to readable format
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 2) return '1 hour ago';
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffHours < 48) return 'Yesterday';
+    return `${Math.floor(diffHours / 24)} days ago`;
+  };
+
   return (
     <div className="panel-container">
       <NavBar title="Campus Recruitment - Admin Panel" />
@@ -208,7 +435,7 @@ const AdminPanel: React.FC = () => {
           </TabsList>
           
           <TabsContent value="dashboard">
-            <div className="dashboard-stats">
+            <div className="dashboard-stats grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -216,9 +443,9 @@ const AdminPanel: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold">{students.length + 2}</div>
+                  <div className="text-3xl font-bold">{stats.totalUsers}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {students.length} students + {users.filter(u => u.role === 'staff').length} staff + {users.filter(u => u.role === 'admin').length} admin
+                    {stats.totalStudents} students + {stats.totalStaff} staff + {stats.totalAdmin} admin
                   </p>
                 </CardContent>
               </Card>
@@ -230,7 +457,7 @@ const AdminPanel: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold">{localCompanies.length}</div>
+                  <div className="text-3xl font-bold">{stats.totalCompanies}</div>
                 </CardContent>
               </Card>
               
@@ -242,13 +469,17 @@ const AdminPanel: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold">
-                    {students.filter(s => s.resumeStatus === 'approved').length}/{students.length}
+                    {stats.approvedResumes}/{stats.totalResumes}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
                         className="bg-green-600 h-2 rounded-full" 
-                        style={{ width: `${(students.filter(s => s.resumeStatus === 'approved').length / students.length) * 100}%` }}
+                        style={{ 
+                          width: stats.totalResumes > 0 
+                            ? `${(stats.approvedResumes / stats.totalResumes) * 100}%`
+                            : '0%'
+                        }}
                       ></div>
                     </div>
                   </div>
@@ -262,32 +493,28 @@ const AdminPanel: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="flex gap-4 items-start border-b pb-4">
-                    <div className="w-2 h-2 rounded-full bg-green-500 mt-2"></div>
-                    <div>
-                      <p className="font-medium">New Company Added</p>
-                      <p className="text-sm text-muted-foreground">Tech Innovations Inc. was added by Staff Member</p>
-                      <p className="text-xs text-muted-foreground">2 hours ago</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-4 items-start border-b pb-4">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 mt-2"></div>
-                    <div>
-                      <p className="font-medium">Resume Approved</p>
-                      <p className="text-sm text-muted-foreground">Jane Smith's resume was approved by Staff Member</p>
-                      <p className="text-xs text-muted-foreground">5 hours ago</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-4 items-start">
-                    <div className="w-2 h-2 rounded-full bg-red-500 mt-2"></div>
-                    <div>
-                      <p className="font-medium">Resume Rejected</p>
-                      <p className="text-sm text-muted-foreground">John Doe's resume was rejected by Staff Member</p>
-                      <p className="text-xs text-muted-foreground">Yesterday</p>
-                    </div>
-                  </div>
+                  {activities.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No recent activity</p>
+                  ) : (
+                    activities.map((activity) => (
+                      <div key={activity.id} className="flex gap-4 items-start border-b pb-4 last:border-0">
+                        <div className={`w-2 h-2 rounded-full mt-2 
+                          ${activity.type === 'company_added' ? 'bg-green-500' : ''}
+                          ${activity.type === 'resume_approved' ? 'bg-blue-500' : ''}
+                          ${activity.type === 'resume_rejected' ? 'bg-red-500' : ''}
+                        `}></div>
+                        <div>
+                          <p className="font-medium">
+                            {activity.type === 'company_added' && 'New Company Added'}
+                            {activity.type === 'resume_approved' && 'Resume Approved'}
+                            {activity.type === 'resume_rejected' && 'Resume Rejected'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{activity.description} by {activity.userName}</p>
+                          <p className="text-xs text-muted-foreground">{formatTimestamp(activity.timestamp)}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

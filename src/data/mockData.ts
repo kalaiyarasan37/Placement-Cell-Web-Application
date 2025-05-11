@@ -28,6 +28,7 @@ export interface Company {
   requirements: string[];
   location: string;
   posted_by: string;  // Using posted_by to match Supabase schema
+  created_at?: string; // Added to match Supabase schema
 }
 
 // Mock users for login
@@ -103,6 +104,7 @@ export const companies: Company[] = [
     requirements: ['Strong programming skills', 'Problem-solving abilities', 'Team player'],
     location: 'San Francisco, CA',
     posted_by: 'Admin User',
+    created_at: '2025-05-01T10:30:00Z',
   },
   {
     id: '2',
@@ -113,6 +115,7 @@ export const companies: Company[] = [
     requirements: ['Finance or related degree', 'Analytical skills', 'Excel proficiency'],
     location: 'New York, NY',
     posted_by: 'Staff Member',
+    created_at: '2025-05-05T14:20:00Z',
   },
   {
     id: '3',
@@ -123,5 +126,6 @@ export const companies: Company[] = [
     requirements: ['Engineering background', 'Environmental knowledge', 'Project management skills'],
     location: 'Seattle, WA',
     posted_by: 'Admin User',
+    created_at: '2025-05-08T09:15:00Z',
   },
 ];
