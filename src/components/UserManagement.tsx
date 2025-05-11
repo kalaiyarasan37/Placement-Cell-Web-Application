@@ -59,7 +59,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    email: ''
+    email: '',
+    password: ''
   });
 
   const fetchUsers = async () => {
@@ -198,7 +199,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
 
   const handleAddUser = () => {
     setCurrentUser(null);
-    setFormData({ name: '', email: '' });
+    setFormData({ name: '', email: '', password: '' });
     setIsFormOpen(true);
   };
 
@@ -206,7 +207,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
     setCurrentUser(user);
     setFormData({ 
       name: user.name,
-      email: user.email || ''
+      email: user.email || '',
+      password: '' // We don't populate password on edit
     });
     setIsFormOpen(true);
   };
@@ -218,7 +220,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
 
   const resetFormState = () => {
     setCurrentUser(null);
-    setFormData({ name: '', email: '' });
+    setFormData({ name: '', email: '', password: '' });
     setIsFormOpen(false);
     setIsDeleteDialogOpen(false);
   };
@@ -272,6 +274,26 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
       return;
     }
     
+    // Email validation
+    if (!formData.email || !formData.email.includes('@')) {
+      toast({
+        title: "Error",
+        description: "Valid email is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Password validation when creating a new user
+    if (!currentUser && (!formData.password || formData.password.length < 6)) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 6 characters",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     try {
       // If editing an existing user
       if (currentUser) {
@@ -279,7 +301,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
         const { error } = await supabase
           .from('profiles')
           .update({
-            name: formData.name
+            name: formData.name,
+            // Only update email if it has changed and is provided
+            ...(formData.email && formData.email !== currentUser.email ? { email: formData.email } : {})
           })
           .eq('id', currentUser.id);
           
@@ -293,6 +317,23 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
           return;
         }
         
+        // If password is provided, update it
+        if (formData.password) {
+          const { error: authError } = await supabase.auth.admin.updateUserById(
+            currentUser.id,
+            { password: formData.password }
+          );
+          
+          if (authError) {
+            console.error('Error updating password:', authError);
+            toast({
+              title: "Warning",
+              description: `User updated but password could not be changed. ${authError.message}`,
+              variant: "destructive"
+            });
+          }
+        }
+        
         toast({
           title: "User Updated",
           description: `${formData.name}'s profile has been updated.`,
@@ -300,16 +341,47 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
       } 
       // If creating a new user
       else {
-        // Generate a unique ID for the new user
-        const newUserId = crypto.randomUUID();
+        // First create auth user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              name: formData.name,
+              role: userType
+            }
+          }
+        });
         
-        // First create the profile record
+        if (authError) {
+          console.error('Error creating auth user:', authError);
+          toast({
+            title: "Error",
+            description: `Failed to create user account. ${authError.message}`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        if (!authData.user || !authData.user.id) {
+          toast({
+            title: "Error",
+            description: "Failed to create user account. No user ID returned.",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        const newUserId = authData.user.id;
+        
+        // Create profile record
         const { error: profileError } = await supabase
           .from('profiles')
           .insert({
             id: newUserId,
             name: formData.name,
-            role: userType
+            role: userType,
+            email: formData.email
           });
           
         if (profileError) {
@@ -333,13 +405,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
             
           if (studentError) {
             console.error('Error creating student record:', studentError);
-            // Log but don't block the user creation
+            toast({
+              title: "Warning",
+              description: `User created but student record could not be created. ${studentError.message}`,
+              variant: "destructive"
+            });
           }
         }
         
         toast({
           title: "User Created",
-          description: `${formData.name} has been added as a ${userType}.`,
+          description: `${formData.name} has been added as a ${userType} with login credentials.`,
         });
       }
       
@@ -456,6 +532,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
                   {userType === 'student' && <TableHead>Resume Status</TableHead>}
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -464,6 +541,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
                 {filteredUsers.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell>{user.name}</TableCell>
+                    <TableCell>{user.email || 'Not set'}</TableCell>
                     {userType === 'student' && (
                       <TableCell>
                         <div className="flex gap-2">
@@ -531,7 +609,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
             <DialogDescription>
               {currentUser 
                 ? `Update ${userType} information`
-                : `Enter the details for the new ${userType}`}
+                : `Enter the details for the new ${userType} with login credentials`}
             </DialogDescription>
           </DialogHeader>
           
@@ -547,21 +625,36 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
                 />
               </div>
               
-              {!currentUser && (
-                <div>
-                  <Label htmlFor="email">Email (Optional)</Label>
-                  <Input 
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    placeholder="Enter email"
-                  />
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input 
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  placeholder="Enter email"
+                  required
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="password">
+                  {currentUser ? "Password (leave blank to keep current)" : "Password"}
+                </Label>
+                <Input 
+                  id="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  placeholder={currentUser ? "••••••••" : "Enter password"}
+                  required={!currentUser}
+                />
+                {!currentUser && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Note: This doesn't create an actual user account, only a profile record.
+                    Password must be at least 6 characters
                   </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
             
             <DialogFooter className="mt-4">
