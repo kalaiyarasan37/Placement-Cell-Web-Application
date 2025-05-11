@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,63 +14,284 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from '@/components/ui/use-toast';
-import { companies, students, Student, Company } from '../data/mockData';
+import { companies, Student, Company } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import ResumeViewer from './ResumeViewer';
 import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
+import { supabase } from '../integrations/supabase/client';
+
+interface StudentWithResume extends Student {
+  user: {
+    name: string;
+    email?: string;
+  };
+}
 
 const StaffPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState("students");
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<StudentWithResume | null>(null);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
-  const [localStudents, setLocalStudents] = useState(students);
-  const [localCompanies, setLocalCompanies] = useState(companies);
+  const [localStudents, setLocalStudents] = useState<StudentWithResume[]>([]);
+  const [localCompanies, setLocalCompanies] = useState<Company[]>([]);
   const [isCompanyFormOpen, setIsCompanyFormOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const handleViewResume = (student: Student) => {
+  // Function to fetch students with their resume data
+  const fetchStudents = async () => {
+    try {
+      // First get all profiles that are students
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, name, role')
+        .eq('role', 'student');
+        
+      if (profilesError) {
+        console.error('Error fetching student profiles:', profilesError);
+        return;
+      }
+      
+      // Then get student resume data
+      const { data: students, error: studentsError } = await supabase
+        .from('students')
+        .select('*');
+        
+      if (studentsError) {
+        console.error('Error fetching student resume data:', studentsError);
+        return;
+      }
+      
+      // Get user emails from auth
+      const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+      
+      if (authError) {
+        console.error('Error fetching auth users:', authError);
+      }
+      
+      // Combine the data
+      const combinedData = profiles?.map(profile => {
+        const studentData = students?.find(s => s.user_id === profile.id);
+        const authUser = authData?.users?.find(u => u.id === profile.id);
+        
+        return {
+          id: profile.id,
+          name: profile.name,
+          course: "Not specified", // These fields would need to be added to your database
+          year: 1, // Placeholder value
+          resumeUrl: studentData?.resume_url || undefined,
+          resumeStatus: (studentData?.resume_status as 'pending' | 'approved' | 'rejected') || 'pending',
+          resumeNotes: studentData?.resume_notes || "",
+          user: {
+            name: profile.name,
+            email: authUser?.email
+          }
+        };
+      }) || [];
+      
+      setLocalStudents(combinedData);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error:', error);
+      setIsLoading(false);
+    }
+  };
+  
+  // Function to fetch companies
+  const fetchCompanies = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*');
+        
+      if (error) {
+        console.error('Error fetching companies:', error);
+        setLocalCompanies(companies as Company[]);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        setLocalCompanies(data as Company[]);
+      } else {
+        setLocalCompanies(companies as Company[]);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setLocalCompanies(companies as Company[]);
+    }
+  };
+  
+  // Fetch data and set up subscriptions
+  useEffect(() => {
+    fetchStudents();
+    fetchCompanies();
+    
+    // Set up subscription for profiles
+    const profilesSubscription = supabase
+      .channel('profiles-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'profiles', filter: 'role=eq.student' }, 
+        () => {
+          console.log('Student profiles changed, refreshing data');
+          fetchStudents();
+        }
+      )
+      .subscribe();
+      
+    // Set up subscription for student resume data
+    const studentsSubscription = supabase
+      .channel('students-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'students' }, 
+        () => {
+          console.log('Student resume data changed, refreshing data');
+          fetchStudents();
+        }
+      )
+      .subscribe();
+      
+    // Set up subscription for companies
+    const companiesSubscription = supabase
+      .channel('companies-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'companies' }, 
+        () => {
+          console.log('Companies changed, refreshing data');
+          fetchCompanies();
+        }
+      )
+      .subscribe();
+      
+    // Clean up subscriptions
+    return () => {
+      profilesSubscription.unsubscribe();
+      studentsSubscription.unsubscribe();
+      companiesSubscription.unsubscribe();
+    };
+  }, []);
+  
+  const handleViewResume = (student: StudentWithResume) => {
     setSelectedStudent(student);
     setIsResumeDialogOpen(true);
   };
   
-  const handleApproveResume = () => {
+  const handleApproveResume = async () => {
     if (selectedStudent) {
-      const updatedStudents = localStudents.map(s => 
-        s.id === selectedStudent.id ? { ...s, resumeStatus: 'approved' as const } : s
-      );
-      setLocalStudents(updatedStudents);
-      setSelectedStudent({ ...selectedStudent, resumeStatus: 'approved' as const });
-      
-      toast({
-        title: "Resume Approved",
-        description: `${selectedStudent.name}'s resume has been approved.`,
-      });
+      try {
+        // Update in Supabase
+        const { error } = await supabase
+          .from('students')
+          .update({ resume_status: 'approved' })
+          .eq('user_id', selectedStudent.id);
+          
+        if (error) {
+          console.error('Error approving resume:', error);
+          toast({
+            title: "Error",
+            description: "Failed to approve resume. " + error.message,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Update local state for immediate UI feedback
+        setSelectedStudent({ ...selectedStudent, resumeStatus: 'approved' });
+        setLocalStudents(localStudents.map(s => 
+          s.id === selectedStudent.id ? { ...s, resumeStatus: 'approved' } : s
+        ));
+        
+        toast({
+          title: "Resume Approved",
+          description: `${selectedStudent.name}'s resume has been approved.`,
+        });
+      } catch (error) {
+        console.error('Error:', error);
+        toast({
+          title: "Error",
+          description: "An unexpected error occurred",
+          variant: "destructive"
+        });
+      }
     }
   };
   
-  const handleRejectResume = () => {
+  const handleRejectResume = async () => {
     if (selectedStudent) {
-      const updatedStudents = localStudents.map(s => 
-        s.id === selectedStudent.id ? { ...s, resumeStatus: 'rejected' as const } : s
-      );
-      setLocalStudents(updatedStudents);
-      setSelectedStudent({ ...selectedStudent, resumeStatus: 'rejected' as const });
-      
-      toast({
-        title: "Revision Requested",
-        description: `${selectedStudent.name} will be notified to update their resume.`,
-      });
+      try {
+        // Update in Supabase
+        const { error } = await supabase
+          .from('students')
+          .update({ resume_status: 'rejected' })
+          .eq('user_id', selectedStudent.id);
+          
+        if (error) {
+          console.error('Error rejecting resume:', error);
+          toast({
+            title: "Error",
+            description: "Failed to request revision. " + error.message,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Update local state for immediate UI feedback
+        setSelectedStudent({ ...selectedStudent, resumeStatus: 'rejected' });
+        setLocalStudents(localStudents.map(s => 
+          s.id === selectedStudent.id ? { ...s, resumeStatus: 'rejected' } : s
+        ));
+        
+        toast({
+          title: "Revision Requested",
+          description: `${selectedStudent.name} will be notified to update their resume.`,
+        });
+      } catch (error) {
+        console.error('Error:', error);
+        toast({
+          title: "Error",
+          description: "An unexpected error occurred",
+          variant: "destructive"
+        });
+      }
     }
   };
   
-  const handleUpdateNotes = (notes: string) => {
+  const handleUpdateNotes = async (notes: string) => {
     if (selectedStudent) {
-      const updatedStudents = localStudents.map(s => 
-        s.id === selectedStudent.id ? { ...s, resumeNotes: notes } : s
-      );
-      setLocalStudents(updatedStudents);
-      setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
+      try {
+        // Update in Supabase
+        const { error } = await supabase
+          .from('students')
+          .update({ resume_notes: notes })
+          .eq('user_id', selectedStudent.id);
+          
+        if (error) {
+          console.error('Error updating notes:', error);
+          toast({
+            title: "Error",
+            description: "Failed to update notes. " + error.message,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Update local state for immediate UI feedback
+        setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
+        setLocalStudents(localStudents.map(s => 
+          s.id === selectedStudent.id ? { ...s, resumeNotes: notes } : s
+        ));
+        
+        toast({
+          title: "Notes Updated",
+          description: "Feedback notes have been updated.",
+        });
+      } catch (error) {
+        console.error('Error:', error);
+        toast({
+          title: "Error",
+          description: "An unexpected error occurred",
+          variant: "destructive"
+        });
+      }
     }
   };
 
@@ -85,37 +305,104 @@ const StaffPanel: React.FC = () => {
     setIsCompanyFormOpen(true);
   };
 
-  const handleDeleteCompany = (companyId: string) => {
-    setLocalCompanies(localCompanies.filter(company => company.id !== companyId));
-    toast({
-      title: "Company Deleted",
-      description: "The company has been removed from the system.",
-    });
+  const handleDeleteCompany = async (companyId: string) => {
+    try {
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('companies')
+        .delete()
+        .eq('id', companyId);
+        
+      if (error) {
+        console.error('Error deleting company:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete company. " + error.message,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      toast({
+        title: "Company Deleted",
+        description: "The company has been removed from the system.",
+      });
+      // The real-time subscription will update the UI
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleSaveCompany = (companyData: Partial<Company>) => {
-    if (selectedCompany) {
-      // Edit existing company
-      const updatedCompanies = localCompanies.map(c => 
-        c.id === selectedCompany.id ? { ...c, ...companyData } as Company : c
-      );
-      setLocalCompanies(updatedCompanies);
-      toast({
-        title: "Company Updated",
-        description: `${companyData.name} has been updated successfully.`,
-      });
-    } else {
-      // Add new company
-      const newCompany = {
-        ...companyData,
-        id: Date.now().toString(),
-        postedBy: "Staff Member", // This would come from the current user in a real app
-      } as Company;
+  const handleSaveCompany = async (companyData: Partial<Company>) => {
+    try {
+      if (selectedCompany) {
+        // Update existing company
+        const { error } = await supabase
+          .from('companies')
+          .update({
+            name: companyData.name,
+            description: companyData.description,
+            location: companyData.location,
+            positions: companyData.positions,
+            requirements: companyData.requirements,
+            deadline: companyData.deadline
+          })
+          .eq('id', selectedCompany.id);
+          
+        if (error) {
+          console.error('Error updating company:', error);
+          toast({
+            title: "Error",
+            description: "Failed to update company. " + error.message,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        toast({
+          title: "Company Updated",
+          description: `${companyData.name} has been updated successfully.`,
+        });
+      } else {
+        // Add new company
+        const newCompanyData = {
+          ...companyData,
+          posted_by: "staff-user", // This would be the current user's ID in a real app
+        };
+        
+        const { error } = await supabase
+          .from('companies')
+          .insert(newCompanyData);
+          
+        if (error) {
+          console.error('Error adding company:', error);
+          toast({
+            title: "Error",
+            description: "Failed to add company. " + error.message,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        toast({
+          title: "Company Added",
+          description: `${companyData.name} has been added to the system.`,
+        });
+      }
       
-      setLocalCompanies([...localCompanies, newCompany]);
+      setIsCompanyFormOpen(false);
+      // The real-time subscription will update the UI
+    } catch (error) {
+      console.error('Error:', error);
       toast({
-        title: "Company Added",
-        description: `${newCompany.name} has been added to the system.`,
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
       });
     }
   };
@@ -137,45 +424,59 @@ const StaffPanel: React.FC = () => {
                 <CardTitle>Student Resume Review</CardTitle>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Course</TableHead>
-                      <TableHead>Year</TableHead>
-                      <TableHead>Resume Status</TableHead>
-                      <TableHead>Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {localStudents.map((student) => (
-                      <TableRow key={student.id}>
-                        <TableCell>{student.name}</TableCell>
-                        <TableCell>{student.course}</TableCell>
-                        <TableCell>Year {student.year}</TableCell>
-                        <TableCell>
-                          <div className={`
-                            ${student.resumeStatus === 'approved' ? 'status-approved' : ''}
-                            ${student.resumeStatus === 'pending' ? 'status-pending' : ''}
-                            ${student.resumeStatus === 'rejected' ? 'status-rejected' : ''}
-                          `}>
-                            {student.resumeStatus === 'approved' && "Approved"}
-                            {student.resumeStatus === 'pending' && "Pending"}
-                            {student.resumeStatus === 'rejected' && "Needs Revision"}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <button
-                            className="text-blue-600 hover:text-blue-800 font-medium"
-                            onClick={() => handleViewResume(student)}
-                          >
-                            View Resume
-                          </button>
-                        </TableCell>
+                {isLoading ? (
+                  <div className="text-center py-10">Loading students...</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Resume Status</TableHead>
+                        <TableHead>Action</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {localStudents.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                            No students found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        localStudents.map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell>{student.name}</TableCell>
+                            <TableCell>{student.user.email || 'N/A'}</TableCell>
+                            <TableCell>
+                              <div className={`
+                                ${student.resumeStatus === 'approved' ? 'status-approved' : ''}
+                                ${student.resumeStatus === 'pending' ? 'status-pending' : ''}
+                                ${student.resumeStatus === 'rejected' ? 'status-rejected' : ''}
+                              `}>
+                                {student.resumeStatus === 'approved' && "Approved"}
+                                {student.resumeStatus === 'pending' && "Pending"}
+                                {student.resumeStatus === 'rejected' && "Needs Revision"}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {student.resumeUrl ? (
+                                <button
+                                  className="text-blue-600 hover:text-blue-800 font-medium"
+                                  onClick={() => handleViewResume(student)}
+                                >
+                                  View Resume
+                                </button>
+                              ) : (
+                                <span className="text-gray-400">No Resume</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -188,17 +489,21 @@ const StaffPanel: React.FC = () => {
                 Add Company
               </Button>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {localCompanies.map(company => (
-                <CompanyCard 
-                  key={company.id}
-                  company={company}
-                  isEditable={true}
-                  onEdit={() => handleEditCompany(company)}
-                  onDelete={() => handleDeleteCompany(company.id)}
-                />
-              ))}
-            </div>
+            {isLoading ? (
+              <div className="text-center py-10">Loading companies...</div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {localCompanies.map(company => (
+                  <CompanyCard 
+                    key={company.id}
+                    company={company}
+                    isEditable={true}
+                    onEdit={() => handleEditCompany(company)}
+                    onDelete={() => handleDeleteCompany(company.id)}
+                  />
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

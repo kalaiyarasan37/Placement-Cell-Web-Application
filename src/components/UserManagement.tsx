@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,72 +59,96 @@ const UserManagement: React.FC<UserManagementProps> = ({
     role: userType || 'student' as 'admin' | 'staff' | 'student',
   });
 
-  // Fetch users from the database
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        // Get auth users
-        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-        
-        if (authError) {
-          console.error('Error fetching auth users:', authError);
-          // Use demo data if auth API fails
-          let filteredUsers = Object.values(demoCredentials);
-          if (userType) {
-            filteredUsers = filteredUsers.filter(user => user.role === userType);
-          }
-          setUsers(filteredUsers as User[]);
-          setIsLoading(false);
-          return;
-        }
-
-        // Get profiles to match with auth users
-        let query = supabase.from('profiles').select('id, name, role');
-        
-        if (userType) {
-          query = query.eq('role', userType);
-        }
-        
-        const { data: profilesData, error: profilesError } = await query;
-        
-        if (profilesError) {
-          console.error('Error fetching profiles:', profilesError);
-          // Use demo data if profiles fetch fails
-          let filteredUsers = Object.values(demoCredentials);
-          if (userType) {
-            filteredUsers = filteredUsers.filter(user => user.role === userType);
-          }
-          setUsers(filteredUsers as User[]);
-          setIsLoading(false);
-          return;
-        }
-        
-        // Map profiles to users with email from auth
-        const usersWithEmail = profilesData?.map(profile => {
-          // Type assertion to make TypeScript happy since we know authData.users exists
-          const authUsers = authData?.users || [];
-          const authUser = authUsers.find(user => user.id === profile.id);
-          return {
-            ...profile,
-            email: authUser?.email || undefined
-          };
-        }) || [];
-        
-        setUsers(usersWithEmail as User[]);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error fetching users:', error);
-        // Fallback to demo users
+  // Function to fetch and update users
+  const fetchUsers = async () => {
+    try {
+      console.log('Fetching users...');
+      // Get auth users
+      const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+      
+      if (authError) {
+        console.error('Error fetching auth users:', authError);
+        // Use demo data if auth API fails
         let filteredUsers = Object.values(demoCredentials);
         if (userType) {
           filteredUsers = filteredUsers.filter(user => user.role === userType);
         }
         setUsers(filteredUsers as User[]);
         setIsLoading(false);
+        return;
       }
-    };
-    
+
+      // Get profiles to match with auth users
+      let query = supabase.from('profiles').select('id, name, role');
+      
+      if (userType) {
+        query = query.eq('role', userType);
+      }
+      
+      const { data: profilesData, error: profilesError } = await query;
+      
+      if (profilesError) {
+        console.error('Error fetching profiles:', profilesError);
+        // Use demo data if profiles fetch fails
+        let filteredUsers = Object.values(demoCredentials);
+        if (userType) {
+          filteredUsers = filteredUsers.filter(user => user.role === userType);
+        }
+        setUsers(filteredUsers as User[]);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Map profiles to users with email from auth
+      const usersWithEmail = profilesData?.map(profile => {
+        // Type assertion to make TypeScript happy since we know authData.users exists
+        const authUsers = authData?.users || [];
+        const authUser = authUsers.find(user => user.id === profile.id);
+        return {
+          ...profile,
+          email: authUser?.email || undefined
+        };
+      }) || [];
+      
+      setUsers(usersWithEmail as User[]);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      // Fallback to demo users
+      let filteredUsers = Object.values(demoCredentials);
+      if (userType) {
+        filteredUsers = filteredUsers.filter(user => user.role === userType);
+      }
+      setUsers(filteredUsers as User[]);
+      setIsLoading(false);
+    }
+  };
+  
+  // Fetch users from the database
+  useEffect(() => {
     fetchUsers();
+    
+    // Set up real-time subscription for profiles table
+    const profilesSubscription = supabase
+      .channel('profiles-changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'profiles',
+          filter: userType ? `role=eq.${userType}` : undefined
+        }, 
+        () => {
+          console.log('Profiles changed, fetching updated data');
+          fetchUsers();
+        }
+      )
+      .subscribe();
+      
+    // Clean up subscription when component unmounts
+    return () => {
+      profilesSubscription.unsubscribe();
+    };
   }, [userType]);
 
   const handleAddUser = () => {
@@ -220,55 +243,8 @@ const UserManagement: React.FC<UserManagementProps> = ({
           // Continue anyway as the user auth was created
         }
 
-        // Refresh user list with updated data
-        // Get auth users
-        const { data: refreshAuthData, error: refreshAuthError } = await supabase.auth.admin.listUsers();
-        
-        if (refreshAuthError) {
-          // If there's an error refreshing, show a message but continue
-          toast({
-            title: "Warning",
-            description: "User created but couldn't refresh user list",
-            variant: "default",
-          });
-          setIsAddDialogOpen(false);
-          setIsLoading(false);
-          return;
-        }
-        
-        // Get profiles
-        let query = supabase.from('profiles').select('id, name, role');
-        
-        if (userType) {
-          query = query.eq('role', userType);
-        }
-        
-        const { data: refreshProfilesData, error: refreshProfilesError } = await query;
-        
-        if (refreshProfilesError) {
-          toast({
-            title: "Warning",
-            description: "User created but couldn't refresh user list",
-            variant: "default",
-          });
-          setIsAddDialogOpen(false);
-          setIsLoading(false);
-          return;
-        }
-        
-        if (refreshProfilesData && refreshAuthData) {
-          const updatedUsers = refreshProfilesData.map(profile => {
-            // Type assertion to make TypeScript happy
-            const authUsers = refreshAuthData?.users || [];
-            const authUser = authUsers.find(user => user.id === profile.id);
-            return {
-              ...profile,
-              email: authUser?.email || undefined
-            };
-          });
-          setUsers(updatedUsers as User[]);
-        }
-        
+        // Close dialog and show success toast - we don't need to manually refresh
+        // since we have real-time subscription set up
         setIsAddDialogOpen(false);
         toast({
           title: "User Added",
@@ -322,55 +298,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
           }
         }
 
-        // Refresh user list with updated data
-        // Get auth users
-        const { data: refreshAuthData, error: refreshAuthError } = await supabase.auth.admin.listUsers();
-        
-        if (refreshAuthError) {
-          // If there's an error refreshing, show a message but continue
-          toast({
-            title: "Warning",
-            description: "User updated but couldn't refresh user list",
-            variant: "default",
-          });
-          setIsEditDialogOpen(false);
-          setIsLoading(false);
-          return;
-        }
-        
-        // Get profiles
-        let query = supabase.from('profiles').select('id, name, role');
-        
-        if (userType) {
-          query = query.eq('role', userType);
-        }
-        
-        const { data: refreshProfilesData, error: refreshProfilesError } = await query;
-        
-        if (refreshProfilesError) {
-          toast({
-            title: "Warning",
-            description: "User updated but couldn't refresh user list",
-            variant: "default",
-          });
-          setIsEditDialogOpen(false);
-          setIsLoading(false);
-          return;
-        }
-        
-        if (refreshProfilesData && refreshAuthData) {
-          const updatedUsers = refreshProfilesData.map(profile => {
-            // Type assertion to make TypeScript happy
-            const authUsers = refreshAuthData?.users || [];
-            const authUser = authUsers.find(user => user.id === profile.id);
-            return {
-              ...profile,
-              email: authUser?.email || undefined
-            };
-          });
-          setUsers(updatedUsers as User[]);
-        }
-        
+        // Close dialog and show toast - real-time subscription will handle the refresh
         setIsEditDialogOpen(false);
         toast({
           title: "User Updated",
@@ -414,8 +342,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
           }
         }
 
-        // Update user list in state
-        setUsers(users.filter(u => u.id !== currentUser.id));
+        // Real-time subscription will handle updating the user list
         setIsDeleteDialogOpen(false);
         toast({
           title: "User Deleted",

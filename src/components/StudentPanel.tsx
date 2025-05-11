@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,6 +20,17 @@ interface StudentPanelProps {
   studentId: string;
 }
 
+interface Company {
+  id: string;
+  name: string;
+  description: string;
+  location: string;
+  positions: string[];
+  requirements: string[];
+  deadline: string;
+  posted_by: string;
+}
+
 const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
   const { currentUser } = useAuth();
   const [resumeUrl, setResumeUrl] = useState<string | undefined>(undefined);
@@ -29,15 +39,17 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
   const [isViewResumeDialogOpen, setIsViewResumeDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState<typeof companies[0] | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [availableCompanies, setAvailableCompanies] = useState<Company[]>(companies as Company[]);
   
+  // Fetch student data
   useEffect(() => {
     const fetchStudentData = async () => {
       try {
         const { data, error } = await supabase
           .from('students')
-          .select('resume_url, resume_status')
+          .select('resume_url, resume_status, resume_notes')
           .eq('user_id', studentId)
           .single();
         
@@ -49,6 +61,7 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
         if (data) {
           setResumeUrl(data.resume_url);
           setResumeStatus(data.resume_status as 'pending' | 'approved' | 'rejected');
+          setResumeNotes(data.resume_notes || '');
         }
       } catch (error) {
         console.error('Error:', error);
@@ -58,15 +71,121 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
     };
     
     fetchStudentData();
+    
+    // Set up real-time subscription for student data
+    const studentSubscription = supabase
+      .channel('student-changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'students',
+          filter: `user_id=eq.${studentId}`
+        }, 
+        (payload) => {
+          console.log('Student data changed:', payload);
+          if (payload.new) {
+            setResumeUrl((payload.new as any).resume_url);
+            setResumeStatus((payload.new as any).resume_status);
+            setResumeNotes((payload.new as any).resume_notes || '');
+          }
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      studentSubscription.unsubscribe();
+    };
   }, [studentId]);
   
-  const handleResumeUpload = (url: string) => {
-    setResumeUrl(url);
-    setResumeStatus('pending');
-    setResumeNotes('');
+  // Fetch companies
+  useEffect(() => {
+    const fetchCompanies = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('companies')
+          .select('*');
+        
+        if (error) {
+          console.error('Error fetching companies:', error);
+          setAvailableCompanies(companies as Company[]);
+          return;
+        }
+        
+        if (data && data.length > 0) {
+          setAvailableCompanies(data as Company[]);
+        } else {
+          setAvailableCompanies(companies as Company[]);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        setAvailableCompanies(companies as Company[]);
+      }
+    };
+    
+    fetchCompanies();
+    
+    // Set up real-time subscription for companies
+    const companiesSubscription = supabase
+      .channel('companies-changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'companies',
+        }, 
+        () => {
+          console.log('Companies changed, refreshing list');
+          fetchCompanies();
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      companiesSubscription.unsubscribe();
+    };
+  }, []);
+  
+  const handleResumeUpload = async (url: string) => {
+    try {
+      const { error } = await supabase
+        .from('students')
+        .upsert({
+          user_id: studentId,
+          resume_url: url,
+          resume_status: 'pending',
+          resume_notes: ''
+        });
+        
+      if (error) {
+        console.error('Error updating resume:', error);
+        toast({
+          title: "Error",
+          description: "Failed to update resume information",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      setResumeUrl(url);
+      setResumeStatus('pending');
+      setResumeNotes('');
+      
+      toast({
+        title: "Resume Uploaded",
+        description: "Your resume has been uploaded and is pending review."
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    }
   };
   
-  const handleApplyToCompany = (company: typeof companies[0]) => {
+  const handleApplyToCompany = (company: Company) => {
     setSelectedCompany(company);
     
     if (resumeStatus !== 'approved') {
@@ -81,8 +200,10 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
     setIsApplyDialogOpen(true);
   };
   
-  const handleSubmitApplication = () => {
+  const handleSubmitApplication = async () => {
     // In a real app, this would submit the application to the backend
+    // Here we could add code to store the application in Supabase
+    // For now, just show a toast
     toast({
       title: "Application Submitted",
       description: `Your application to ${selectedCompany?.name} has been submitted successfully.`,
@@ -168,7 +289,7 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
             <div className="bg-white rounded-lg p-6 shadow-md">
               <h3 className="font-medium mb-4">Upcoming Deadlines</h3>
               <div className="space-y-4">
-                {companies.slice(0, 3).map(company => (
+                {availableCompanies.slice(0, 3).map(company => (
                   <div key={company.id} className="flex justify-between border-b pb-3">
                     <div>
                       <p className="font-medium">{company.name}</p>
@@ -235,7 +356,7 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
           
           <TabsContent value="companies">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {companies.map(company => (
+              {availableCompanies.map(company => (
                 <CompanyCard 
                   key={company.id}
                   company={company}

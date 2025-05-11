@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import UserManagement from './UserManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,13 +10,66 @@ import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
 import { Company } from '../data/mockData';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
+import { toast } from '@/components/ui/use-toast';
 
 const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [localCompanies, setLocalCompanies] = useState(companies);
+  const [localCompanies, setLocalCompanies] = useState<Company[]>(companies);
   const [isCompanyFormOpen, setIsCompanyFormOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   const { currentUser } = useAuth();
+  
+  // Function to fetch companies from Supabase
+  const fetchCompanies = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*');
+        
+      if (error) {
+        console.error('Error fetching companies:', error);
+        // Fall back to mock data if there's an error
+        setLocalCompanies(companies);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        setLocalCompanies(data as Company[]);
+      } else {
+        // If no companies found in DB, use mock data
+        setLocalCompanies(companies);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setLocalCompanies(companies);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Fetch companies and set up real-time subscription
+  useEffect(() => {
+    fetchCompanies();
+    
+    // Set up real-time subscription for companies table
+    const companiesSubscription = supabase
+      .channel('companies-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'companies' }, 
+        () => {
+          console.log('Companies changed, fetching updated data');
+          fetchCompanies();
+        }
+      )
+      .subscribe();
+      
+    // Clean up subscription when component unmounts
+    return () => {
+      companiesSubscription.unsubscribe();
+    };
+  }, []);
 
   const handleAddCompany = () => {
     setSelectedCompany(undefined);
@@ -29,26 +81,109 @@ const AdminPanel: React.FC = () => {
     setIsCompanyFormOpen(true);
   };
 
-  const handleDeleteCompany = (companyId: string) => {
-    setLocalCompanies(localCompanies.filter(company => company.id !== companyId));
+  const handleDeleteCompany = async (companyId: string) => {
+    try {
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('companies')
+        .delete()
+        .eq('id', companyId);
+        
+      if (error) {
+        console.error('Error deleting company:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete company. " + error.message,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Local state update will happen through the subscription
+      toast({
+        title: "Company Deleted",
+        description: "The company has been successfully removed.",
+        variant: "destructive"
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while deleting the company.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleSaveCompany = (companyData: Partial<Company>) => {
-    if (selectedCompany) {
-      // Edit existing company
-      const updatedCompanies = localCompanies.map(c => 
-        c.id === selectedCompany.id ? { ...c, ...companyData } as Company : c
-      );
-      setLocalCompanies(updatedCompanies);
-    } else {
-      // Add new company
-      const newCompany = {
-        ...companyData,
-        id: Date.now().toString(),
-        postedBy: currentUser?.id || "Admin", // Use the current user's ID if available
-      } as Company;
+  const handleSaveCompany = async (companyData: Partial<Company>) => {
+    try {
+      if (selectedCompany) {
+        // Update existing company
+        const { error } = await supabase
+          .from('companies')
+          .update({
+            name: companyData.name,
+            description: companyData.description,
+            location: companyData.location,
+            positions: companyData.positions,
+            requirements: companyData.requirements,
+            deadline: companyData.deadline
+          })
+          .eq('id', selectedCompany.id);
+          
+        if (error) {
+          console.error('Error updating company:', error);
+          toast({
+            title: "Error",
+            description: "Failed to update company. " + error.message,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        toast({
+          title: "Company Updated",
+          description: `${companyData.name} has been updated successfully.`,
+        });
+      } else {
+        // Add new company
+        const newCompanyData = {
+          ...companyData,
+          posted_by: currentUser?.id || "1",
+        };
+        
+        const { data, error } = await supabase
+          .from('companies')
+          .insert(newCompanyData)
+          .select();
+          
+        if (error) {
+          console.error('Error adding company:', error);
+          toast({
+            title: "Error",
+            description: "Failed to add company. " + error.message,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        toast({
+          title: "Company Added",
+          description: `${companyData.name} has been added successfully.`,
+        });
+      }
       
-      setLocalCompanies([...localCompanies, newCompany]);
+      // Close the form
+      setIsCompanyFormOpen(false);
+      // Update will happen through the subscription
+      
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while saving the company.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -88,7 +223,7 @@ const AdminPanel: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold">{companies.length}</div>
+                  <div className="text-3xl font-bold">{localCompanies.length}</div>
                 </CardContent>
               </Card>
               
@@ -167,17 +302,22 @@ const AdminPanel: React.FC = () => {
                 Add Company
               </Button>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {localCompanies.map(company => (
-                <CompanyCard 
-                  key={company.id}
-                  company={company}
-                  isEditable={true}
-                  onEdit={() => handleEditCompany(company)}
-                  onDelete={() => handleDeleteCompany(company.id)}
-                />
-              ))}
-            </div>
+            
+            {isLoading ? (
+              <div className="text-center py-10">Loading companies...</div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {localCompanies.map(company => (
+                  <CompanyCard 
+                    key={company.id}
+                    company={company}
+                    isEditable={true}
+                    onEdit={() => handleEditCompany(company)}
+                    onDelete={() => handleDeleteCompany(company.id)}
+                  />
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>
