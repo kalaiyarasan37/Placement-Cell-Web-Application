@@ -59,8 +59,8 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
             setResumeStatus(data.resume_status as 'pending' | 'approved' | 'rejected');
           }
           
-          // For resume_notes, we need to be extra careful as it might not exist in the schema
-          // We'll set an empty string by default and try to update it if it exists
+          // We don't try to set resumeNotes since it doesn't exist in the schema
+          // Keep using the default empty string state
         }
       } catch (error) {
         console.error('Error:', error);

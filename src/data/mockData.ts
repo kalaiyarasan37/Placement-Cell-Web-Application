@@ -27,7 +27,7 @@ export interface Company {
   deadline: string;
   requirements: string[];
   location: string;
-  posted_by: string;  // Changed from postedBy to posted_by to match Supabase schema
+  posted_by: string;  // Using posted_by to match Supabase schema
 }
 
 // Mock users for login
@@ -92,7 +92,7 @@ export const students: Student[] = [
   },
 ];
 
-// Mock companies - updated to use posted_by instead of postedBy
+// Mock companies - using posted_by instead of postedBy
 export const companies: Company[] = [
   {
     id: '1',

@@ -9,7 +9,7 @@ import { companies, students, users } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
-import { Company } from '../data/mockData';
+import type { Company } from '../data/mockData';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
@@ -32,20 +32,20 @@ const AdminPanel: React.FC = () => {
       if (error) {
         console.error('Error fetching companies:', error);
         // Fall back to mock data if there's an error
-        setLocalCompanies(companies);
+        setLocalCompanies(companies as unknown as Company[]);
         return;
       }
       
       if (data && data.length > 0) {
-        // Convert data to match our Company interface
-        setLocalCompanies(data as Company[]);
+        // Cast Supabase data to our Company interface
+        setLocalCompanies(data as unknown as Company[]);
       } else {
         // If no companies found in DB, use mock data
-        setLocalCompanies(companies);
+        setLocalCompanies(companies as unknown as Company[]);
       }
     } catch (error) {
       console.error('Error:', error);
-      setLocalCompanies(companies);
+      setLocalCompanies(companies as unknown as Company[]);
     } finally {
       setIsLoading(false);
     }
@@ -129,7 +129,7 @@ const AdminPanel: React.FC = () => {
             location: companyData.location,
             positions: companyData.positions,
             requirements: companyData.requirements,
-            deadline: companyData.deadline,
+            deadline: companyData.deadline || new Date().toISOString().split('T')[0]
           })
           .eq('id', selectedCompany.id);
           
@@ -150,13 +150,13 @@ const AdminPanel: React.FC = () => {
       } else {
         // Add new company
         const newCompanyData = {
-          name: companyData.name,
-          description: companyData.description,
-          location: companyData.location,
-          positions: companyData.positions,
-          requirements: companyData.requirements,
-          deadline: companyData.deadline,
-          posted_by: currentUser?.id || "1"
+          name: companyData.name || '',
+          description: companyData.description || '',
+          location: companyData.location || '',
+          positions: companyData.positions || [],
+          requirements: companyData.requirements || [],
+          deadline: companyData.deadline || new Date().toISOString().split('T')[0],
+          posted_by: currentUser?.id || "admin-user"
         };
         
         const { data, error } = await supabase

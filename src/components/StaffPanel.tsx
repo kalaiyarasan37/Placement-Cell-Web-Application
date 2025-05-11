@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from '@/components/ui/use-toast';
-import { companies, Student, Company } from '../data/mockData';
+import { companies, Company } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import ResumeViewer from './ResumeViewer';
 import CompanyForm from './CompanyForm';
@@ -92,11 +92,8 @@ const StaffPanel: React.FC = () => {
       }
       
       // Safely combine the data
-      const combinedData: StudentWithResume[] = (profiles || []).map(profile => {
-        // Handle possible null profiles safely
-        if (!profile || typeof profile !== 'object') {
-          return null;
-        }
+      const combinedData = profiles.map(profile => {
+        if (!profile) return null;
         
         const studentData = students?.find(s => s?.user_id === profile.id) || null;
         const authUser = authUsers?.find(u => u?.id === profile.id) || null;
@@ -115,7 +112,7 @@ const StaffPanel: React.FC = () => {
               name: profile.name,
               email: authUser?.email
             }
-          };
+          } as StudentWithResume;
         }
         return null;
       }).filter(Boolean) as StudentWithResume[];
@@ -137,18 +134,22 @@ const StaffPanel: React.FC = () => {
         
       if (error) {
         console.error('Error fetching companies:', error);
-        setLocalCompanies(companies as Company[]);
+        // Fall back to mock data if there's an error
+        setLocalCompanies(companies as unknown as Company[]);
         return;
       }
       
       if (data && data.length > 0) {
-        setLocalCompanies(data as Company[]);
+        // Cast Supabase data to our Company interface
+        setLocalCompanies(data as unknown as Company[]);
       } else {
-        setLocalCompanies(companies as Company[]);
+        // Use mock data if no companies in the database
+        setLocalCompanies(companies as unknown as Company[]);
       }
     } catch (error) {
       console.error('Error:', error);
-      setLocalCompanies(companies as Company[]);
+      // Fall back to mock data on any error
+      setLocalCompanies(companies as unknown as Company[]);
     }
   };
   
@@ -289,31 +290,17 @@ const StaffPanel: React.FC = () => {
   const handleUpdateNotes = async (notes: string) => {
     if (selectedStudent) {
       try {
-        // Attempt to update resumeNotes only if database schema supports it
-        try {
-          // Check if resume_notes exists before attempting to use it
-          const { error } = await supabase
-            .from('students')
-            .update({ resume_status: selectedStudent.resumeStatus })
-            .eq('user_id', selectedStudent.id);
-            
-          if (!error) {
-            // Only update notes in local state, since the database might not have this column
-            setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
-            setLocalStudents(localStudents.map(s => 
-              s.id === selectedStudent.id ? { ...s, resumeNotes: notes } : s
-            ));
-            
-            toast({
-              title: "Notes Updated",
-              description: "Feedback notes have been saved locally.",
-            });
-          } else {
-            console.error('Error updating status:', error);
-          }
-        } catch (error) {
-          console.error('Error updating notes (schema might be missing resume_notes):', error);
-        }
+        // We don't try to update resume_notes in Supabase since it doesn't exist in the schema
+        // Only update the local state
+        setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
+        setLocalStudents(localStudents.map(s => 
+          s.id === selectedStudent.id ? { ...s, resumeNotes: notes } : s
+        ));
+        
+        toast({
+          title: "Notes Updated",
+          description: "Feedback notes have been saved locally.",
+        });
       } catch (error) {
         console.error('Error:', error);
         toast({
@@ -380,7 +367,7 @@ const StaffPanel: React.FC = () => {
             location: companyData.location,
             positions: companyData.positions,
             requirements: companyData.requirements,
-            deadline: companyData.deadline
+            deadline: companyData.deadline || new Date().toISOString().split('T')[0]
           })
           .eq('id', selectedCompany.id);
           
@@ -401,12 +388,12 @@ const StaffPanel: React.FC = () => {
       } else {
         // Add new company
         const newCompanyData = {
-          name: companyData.name,
-          description: companyData.description,
-          location: companyData.location,
-          positions: companyData.positions,
-          requirements: companyData.requirements,
-          deadline: companyData.deadline || new Date().toISOString().split('T')[0], // Ensure deadline is not optional
+          name: companyData.name || '',
+          description: companyData.description || '',
+          location: companyData.location || '',
+          positions: companyData.positions || [],
+          requirements: companyData.requirements || [],
+          deadline: companyData.deadline || new Date().toISOString().split('T')[0],
           posted_by: "staff-user"
         };
         
