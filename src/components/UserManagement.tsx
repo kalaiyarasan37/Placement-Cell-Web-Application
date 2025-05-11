@@ -1,5 +1,12 @@
+
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -17,161 +24,191 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
-import { Edit, Plus, Trash } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
-import { demoCredentials } from '../data/demoCredentials';
+import { Label } from "@/components/ui/label";
+import { Edit, Trash, UserPlus, Search, X } from "lucide-react";
+
+interface UserManagementProps {
+  userType: 'student' | 'staff';
+}
 
 interface User {
   id: string;
   name: string;
+  role: string;
+  created_at?: string;
   email?: string;
-  role: 'admin' | 'staff' | 'student';
 }
 
-interface UserManagementProps {
-  userType?: 'admin' | 'staff' | 'student';
+interface StudentDetails {
+  id: string;
+  user_id: string;
+  resume_url: string | null;
+  resume_status: string | null;
 }
 
-const UserManagement: React.FC<UserManagementProps> = ({ 
-  userType
-}) => {
+const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
   const [users, setUsers] = useState<User[]>([]);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [studentDetails, setStudentDetails] = useState<Record<string, StudentDetails>>({});
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [formData, setFormData] = useState({
-    id: '',
-    email: '',
-    password: '',
     name: '',
-    role: userType || 'student' as 'admin' | 'staff' | 'student',
+    email: ''
   });
 
-  // Function to fetch and update users
   const fetchUsers = async () => {
     try {
-      console.log('Fetching users...');
-      // Get auth users
-      const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+      setIsLoading(true);
+      // Fetch profiles based on role
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, role')
+        .eq('role', userType);
       
-      if (authError) {
-        console.error('Error fetching auth users:', authError);
-        // Use demo data if auth API fails
-        let filteredUsers = Object.values(demoCredentials);
-        if (userType) {
-          filteredUsers = filteredUsers.filter(user => user.role === userType);
-        }
-        setUsers(filteredUsers as User[]);
-        setIsLoading(false);
-        return;
-      }
-
-      // Get profiles to match with auth users
-      let query = supabase.from('profiles').select('id, name, role');
-      
-      if (userType) {
-        query = query.eq('role', userType);
-      }
-      
-      const { data: profilesData, error: profilesError } = await query;
-      
-      if (profilesError) {
-        console.error('Error fetching profiles:', profilesError);
-        // Use demo data if profiles fetch fails
-        let filteredUsers = Object.values(demoCredentials);
-        if (userType) {
-          filteredUsers = filteredUsers.filter(user => user.role === userType);
-        }
-        setUsers(filteredUsers as User[]);
-        setIsLoading(false);
+      if (error) {
+        console.error(`Error fetching ${userType}s:`, error);
+        toast({
+          title: "Error",
+          description: `Failed to fetch ${userType} list. ${error.message}`,
+          variant: "destructive"
+        });
         return;
       }
       
-      // Map profiles to users with email from auth
-      const usersWithEmail = profilesData?.map(profile => {
-        // Type assertion to make TypeScript happy since we know authData.users exists
-        const authUsers = authData?.users || [];
-        const authUser = authUsers.find(user => user.id === profile.id);
-        return {
-          ...profile,
-          email: authUser?.email || undefined
-        };
-      }) || [];
-      
-      setUsers(usersWithEmail as User[]);
-      setIsLoading(false);
+      if (data) {
+        setUsers(data as User[]);
+        setFilteredUsers(data as User[]);
+        
+        // If we're handling students, also fetch their additional details
+        if (userType === 'student') {
+          await fetchStudentDetails(data as User[]);
+        }
+      }
     } catch (error) {
-      console.error('Error fetching users:', error);
-      // Fallback to demo users
-      let filteredUsers = Object.values(demoCredentials);
-      if (userType) {
-        filteredUsers = filteredUsers.filter(user => user.role === userType);
-      }
-      setUsers(filteredUsers as User[]);
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    } finally {
       setIsLoading(false);
     }
   };
-  
-  // Fetch users from the database
+
+  const fetchStudentDetails = async (studentUsers: User[]) => {
+    if (studentUsers.length === 0) return;
+    
+    // Get student IDs
+    const studentIds = studentUsers.map(student => student.id);
+    
+    try {
+      // Fetch student details
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .in('user_id', studentIds);
+        
+      if (error) {
+        console.error('Error fetching student details:', error);
+        return;
+      }
+      
+      if (data) {
+        // Create a map of user_id to student details
+        const detailsMap: Record<string, StudentDetails> = {};
+        data.forEach((student: StudentDetails) => {
+          detailsMap[student.user_id] = student;
+        });
+        
+        setStudentDetails(detailsMap);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     
     // Set up real-time subscription for profiles table
     const profilesSubscription = supabase
-      .channel('profiles-changes')
+      .channel('user-management-profiles')
       .on('postgres_changes', 
         { 
           event: '*', 
           schema: 'public', 
           table: 'profiles',
-          filter: userType ? `role=eq.${userType}` : undefined
+          filter: `role=eq.${userType}`
         }, 
         () => {
-          console.log('Profiles changed, fetching updated data');
+          console.log(`${userType} profiles changed, refreshing data`);
           fetchUsers();
         }
       )
       .subscribe();
       
-    // Clean up subscription when component unmounts
+    // If handling students, also subscribe to student details changes
+    let studentsSubscription;
+    if (userType === 'student') {
+      studentsSubscription = supabase
+        .channel('user-management-students')
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'students'
+          }, 
+          () => {
+            console.log('Student details changed, refreshing data');
+            fetchUsers(); // This will also fetch the latest student details
+          }
+        )
+        .subscribe();
+    }
+    
+    // Clean up subscriptions when component unmounts
     return () => {
       profilesSubscription.unsubscribe();
+      if (studentsSubscription) {
+        studentsSubscription.unsubscribe();
+      }
     };
   }, [userType]);
 
+  // Filter users based on search term
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredUsers(users);
+      return;
+    }
+    
+    const filtered = users.filter(user => 
+      user.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    
+    setFilteredUsers(filtered);
+  }, [searchTerm, users]);
+
   const handleAddUser = () => {
-    setFormData({
-      id: '',
-      email: '',
-      password: '',
-      name: '',
-      role: userType || 'student',
-    });
-    setIsAddDialogOpen(true);
+    setCurrentUser(null);
+    setFormData({ name: '', email: '' });
+    setIsFormOpen(true);
   };
 
   const handleEditUser = (user: User) => {
     setCurrentUser(user);
     setFormData({ 
-      id: user.id,
-      email: user.email || '',
-      password: '',
       name: user.name,
-      role: user.role,
+      email: user.email || ''
     });
-    setIsEditDialogOpen(true);
+    setIsFormOpen(true);
   };
 
   const handleDeleteUser = (user: User) => {
@@ -179,438 +216,394 @@ const UserManagement: React.FC<UserManagementProps> = ({
     setIsDeleteDialogOpen(true);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+  const resetFormState = () => {
+    setCurrentUser(null);
+    setFormData({ name: '', email: '' });
+    setIsFormOpen(false);
+    setIsDeleteDialogOpen(false);
   };
 
-  const handleRoleChange = (value: string) => {
-    setFormData({ ...formData, role: value as 'admin' | 'staff' | 'student' });
-  };
-
-  const saveUser = async (isNewUser: boolean) => {
-    if (isNewUser) {
-      // Add new user
-      setIsLoading(true);
-      try {
-        // First, create auth user with Supabase
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: {
-            data: {
-              name: formData.name,
-              role: formData.role
-            }
-          }
-        });
+  const handleChangeResumeStatus = async (
+    userId: string, 
+    newStatus: 'pending' | 'approved' | 'rejected'
+  ) => {
+    try {
+      // Update student record in the database
+      const { error } = await supabase
+        .from('students')
+        .update({ resume_status: newStatus })
+        .eq('user_id', userId);
         
-        if (authError) {
-          toast({
-            title: "Error Creating User",
-            description: authError.message,
-            variant: "destructive",
-          });
-          setIsLoading(false);
-          return;
-        }
+      if (error) {
+        console.error('Error updating resume status:', error);
+        toast({
+          title: "Error",
+          description: `Failed to update resume status. ${error.message}`,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      toast({
+        title: "Status Updated",
+        description: `Resume status changed to ${newStatus}.`,
+      });
+      
+      // Update will happen through the subscription
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    }
+  };
 
-        if (!authData.user) {
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.name.trim()) {
+      toast({
+        title: "Error",
+        description: "Name is required",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      // If editing an existing user
+      if (currentUser) {
+        // Update the profile
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            name: formData.name
+          })
+          .eq('id', currentUser.id);
+          
+        if (error) {
+          console.error('Error updating user:', error);
           toast({
             title: "Error",
-            description: "Failed to create user account",
-            variant: "destructive",
+            description: `Failed to update user. ${error.message}`,
+            variant: "destructive"
           });
-          setIsLoading(false);
           return;
         }
-
-        // Create profile record manually to ensure it exists even before email confirmation
+        
+        toast({
+          title: "User Updated",
+          description: `${formData.name}'s profile has been updated.`,
+        });
+      } 
+      // If creating a new user
+      else {
+        // Generate a unique ID for the new user
+        const newUserId = crypto.randomUUID();
+        
+        // First create the profile record
         const { error: profileError } = await supabase
           .from('profiles')
           .insert({
-            id: authData.user.id,
+            id: newUserId,
             name: formData.name,
-            role: formData.role
+            role: userType
           });
-
+          
         if (profileError) {
+          console.error('Error creating profile:', profileError);
           toast({
-            title: "Error Creating Profile",
-            description: profileError.message,
-            variant: "destructive",
+            title: "Error",
+            description: `Failed to create user profile. ${profileError.message}`,
+            variant: "destructive"
           });
-          // Continue anyway as the user auth was created
-        }
-
-        // Close dialog and show success toast - we don't need to manually refresh
-        // since we have real-time subscription set up
-        setIsAddDialogOpen(false);
-        toast({
-          title: "User Added",
-          description: `${formData.name} has been added as a ${formData.role}. They will need to confirm their email before logging in.`,
-        });
-      } catch (error) {
-        console.error('Error adding user:', error);
-        toast({
-          title: "Error",
-          description: "Failed to create user",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    } else {
-      // Update existing user
-      setIsLoading(true);
-      try {
-        // Update profile data
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({ 
-            name: formData.name, 
-            role: formData.role
-          })
-          .eq('id', formData.id);
-        
-        if (profileError) {
-          toast({
-            title: "Error Updating User",
-            description: profileError.message,
-            variant: "destructive",
-          });
-          setIsLoading(false);
           return;
         }
         
-        // Update auth data if password was provided
-        if (formData.password) {
-          const { error: authError } = await supabase.auth.updateUser({
-            password: formData.password
-          });
-          
-          if (authError) {
-            toast({
-              title: "Error Updating Password",
-              description: authError.message,
-              variant: "destructive",
+        // If creating a student, also create a student record
+        if (userType === 'student') {
+          const { error: studentError } = await supabase
+            .from('students')
+            .insert({
+              user_id: newUserId,
+              resume_status: 'pending'
             });
-          }
-        }
-
-        // Close dialog and show toast - real-time subscription will handle the refresh
-        setIsEditDialogOpen(false);
-        toast({
-          title: "User Updated",
-          description: `${formData.name}'s information has been updated.`,
-        });
-      } catch (error) {
-        console.error('Error updating user:', error);
-        toast({
-          title: "Error",
-          description: "Failed to update user",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (currentUser) {
-      setIsLoading(true);
-      try {
-        // Delete the user from auth system
-        const { error } = await supabase.auth.admin.deleteUser(currentUser.id);
-        
-        if (error) {
-          // If deleting from auth fails, try deleting just from profiles
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .delete()
-            .eq('id', currentUser.id);
             
-          if (profileError) {
-            toast({
-              title: "Error Deleting User",
-              description: profileError.message,
-              variant: "destructive",
-            });
-            setIsLoading(false);
-            return;
+          if (studentError) {
+            console.error('Error creating student record:', studentError);
+            // Log but don't block the user creation
           }
         }
-
-        // Real-time subscription will handle updating the user list
-        setIsDeleteDialogOpen(false);
+        
         toast({
-          title: "User Deleted",
-          description: `${currentUser.name} has been removed from the system.`,
-          variant: "destructive",
+          title: "User Created",
+          description: `${formData.name} has been added as a ${userType}.`,
         });
-      } catch (error) {
-        console.error('Error deleting user:', error);
-        toast({
-          title: "Error",
-          description: "Failed to delete user",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
       }
+      
+      // Close the form and reset state
+      resetFormState();
+      
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
     }
   };
 
-  const roleToTitle = {
-    'admin': 'Administrators',
-    'staff': 'Staff Members',
-    'student': 'Students'
+  const confirmDeleteUser = async () => {
+    if (!currentUser) return;
+    
+    try {
+      // First, if it's a student, delete from students table
+      if (userType === 'student') {
+        const { error: studentError } = await supabase
+          .from('students')
+          .delete()
+          .eq('user_id', currentUser.id);
+          
+        if (studentError) {
+          console.error('Error deleting student record:', studentError);
+          toast({
+            title: "Error",
+            description: `Failed to delete student data. ${studentError.message}`,
+            variant: "destructive"
+          });
+          return;
+        }
+      }
+      
+      // Then delete from profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', currentUser.id);
+        
+      if (profileError) {
+        console.error('Error deleting profile:', profileError);
+        toast({
+          title: "Error",
+          description: `Failed to delete user profile. ${profileError.message}`,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      toast({
+        title: "User Deleted",
+        description: `${currentUser.name} has been removed.`,
+        variant: "destructive"
+      });
+      
+      // Close the dialog and reset state
+      resetFormState();
+      
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    }
   };
-
-  if (isLoading && users.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{userType ? roleToTitle[userType] : 'User Management'}</CardTitle>
-          <CardDescription>Loading users...</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <div>
-            <CardTitle>{userType ? roleToTitle[userType] : 'User Management'}</CardTitle>
-            <CardDescription>
-              {userType 
-                ? `Manage ${userType} accounts in the system` 
-                : 'Add, edit, or remove users from the system'}
-            </CardDescription>
-          </div>
-          <Button onClick={handleAddUser}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add {userType ? roleToTitle[userType].slice(0, -1) : 'User'}
-          </Button>
-        </div>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>{userType === 'student' ? 'Students' : 'Staff'} Management</CardTitle>
+        <Button onClick={handleAddUser} variant="default" size="sm">
+          <UserPlus className="h-4 w-4 mr-2" />
+          Add {userType === 'student' ? 'Student' : 'Staff'}
+        </Button>
       </CardHeader>
+      
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              {!userType && <TableHead>Role</TableHead>}
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={userType ? 3 : 4} className="text-center py-10 text-muted-foreground">
-                  No users found
-                </TableCell>
-              </TableRow>
-            ) : (
-              users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>{user.name}</TableCell>
-                  <TableCell>{user.email || 'N/A'}</TableCell>
-                  {!userType && <TableCell className="capitalize">{user.role}</TableCell>}
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => handleEditUser(user)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => handleDeleteUser(user)}
-                      >
-                        <Trash className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <div className="mb-4 flex items-center gap-2">
+          <div className="relative flex-grow">
+            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={`Search ${userType}s by name...`}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8"
+            />
+            {searchTerm && (
+              <button 
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setSearchTerm('')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {isLoading ? (
+          <div className="text-center py-4">Loading...</div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="text-center py-4 text-muted-foreground">
+            {searchTerm ? 'No users found matching your search.' : 'No users found. Add some!'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  {userType === 'student' && <TableHead>Resume Status</TableHead>}
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>{user.name}</TableCell>
+                    {userType === 'student' && (
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <select
+                            value={studentDetails[user.id]?.resume_status || 'pending'}
+                            onChange={(e) => handleChangeResumeStatus(
+                              user.id, 
+                              e.target.value as 'pending' | 'approved' | 'rejected'
+                            )}
+                            className={`rounded px-2 py-1 text-sm font-medium
+                              ${studentDetails[user.id]?.resume_status === 'approved' ? 'bg-green-100 text-green-800' : ''}
+                              ${studentDetails[user.id]?.resume_status === 'pending' ? 'bg-yellow-100 text-yellow-800' : ''}
+                              ${studentDetails[user.id]?.resume_status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
+                            `}
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                          </select>
+                          {studentDetails[user.id]?.resume_url && (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => window.open(studentDetails[user.id]?.resume_url || '', '_blank')}
+                            >
+                              View
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleEditUser(user)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleDeleteUser(user)}
+                        >
+                          <Trash className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
-
-      {/* Add User Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+      
+      {/* User Form Dialog */}
+      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add New {userType ? roleToTitle[userType].slice(0, -1) : 'User'}</DialogTitle>
+            <DialogTitle>
+              {currentUser ? `Edit ${userType}` : `Add New ${userType}`}
+            </DialogTitle>
             <DialogDescription>
-              Create a new user account in the system.
+              {currentUser 
+                ? `Update ${userType} information`
+                : `Enter the details for the new ${userType}`}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input 
-                id="name" 
-                name="name" 
-                value={formData.name} 
-                onChange={handleInputChange} 
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                name="email"
-                type="email" 
-                value={formData.email} 
-                onChange={handleInputChange} 
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input 
-                id="password" 
-                name="password" 
-                type="password" 
-                value={formData.password} 
-                onChange={handleInputChange} 
-                required
-              />
-            </div>
-            {!userType && (
-              <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <Select 
-                  value={formData.role} 
-                  onValueChange={handleRoleChange}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="staff">Staff</SelectItem>
-                    <SelectItem value="student">Student</SelectItem>
-                  </SelectContent>
-                </Select>
+          
+          <form onSubmit={handleFormSubmit}>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="name">Name</Label>
+                <Input 
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  placeholder="Enter name"
+                />
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isLoading}>
-              Cancel
-            </Button>
-            <Button onClick={() => saveUser(true)} disabled={isLoading}>
-              {isLoading ? "Creating..." : "Create User"}
-            </Button>
-          </DialogFooter>
+              
+              {!currentUser && (
+                <div>
+                  <Label htmlFor="email">Email (Optional)</Label>
+                  <Input 
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    placeholder="Enter email"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Note: This doesn't create an actual user account, only a profile record.
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter className="mt-4">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={resetFormState}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">
+                {currentUser ? 'Update' : 'Add'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
-
-      {/* Edit User Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>
-              Update user information.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Full Name</Label>
-              <Input 
-                id="edit-name" 
-                name="name" 
-                value={formData.name} 
-                onChange={handleInputChange} 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input 
-                id="edit-email" 
-                name="email" 
-                type="email" 
-                value={formData.email} 
-                onChange={handleInputChange} 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-password">Password</Label>
-              <Input 
-                id="edit-password" 
-                name="password" 
-                type="password" 
-                placeholder="••••••••" 
-                value={formData.password} 
-                onChange={handleInputChange} 
-              />
-              <p className="text-xs text-muted-foreground">Leave blank to keep current password</p>
-            </div>
-            {!userType && (
-              <div className="space-y-2">
-                <Label htmlFor="edit-role">Role</Label>
-                <Select 
-                  value={formData.role} 
-                  onValueChange={handleRoleChange}
-                >
-                  <SelectTrigger id="edit-role">
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="staff">Staff</SelectItem>
-                    <SelectItem value="student">Student</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isLoading}>
-              Cancel
-            </Button>
-            <Button onClick={() => saveUser(false)} disabled={isLoading}>
-              {isLoading ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete User Dialog */}
+      
+      {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
+            <DialogTitle>Confirm Deletion</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this user? This action cannot be undone.
+              Are you sure you want to delete {currentUser?.name}? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            {currentUser && (
-              <p>
-                You are about to delete <span className="font-medium">{currentUser.name}</span> ({currentUser.role}).
-              </p>
-            )}
-          </div>
+          
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isLoading}>
+            <Button 
+              type="button"
+              variant="outline"
+              onClick={resetFormState}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmDelete} disabled={isLoading}>
-              {isLoading ? "Deleting..." : "Delete User"}
+            <Button 
+              type="button" 
+              variant="destructive" 
+              onClick={confirmDeleteUser}
+            >
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

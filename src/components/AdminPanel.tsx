@@ -1,10 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import UserManagement from './UserManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { students, companies as mockCompanies } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
@@ -12,6 +12,7 @@ import type { Company } from '../data/mockData';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { companies as mockCompanies } from '../data/mockData';
 
 interface Activity {
   id: string;
@@ -131,15 +132,15 @@ const AdminPanel: React.FC = () => {
       console.error('Error fetching dashboard stats:', error);
       // Fall back to some default values
       setStats({
-        totalUsers: students.length + 2,
-        totalStudents: students.length,
+        totalUsers: mockCompanies.length + 2,
+        totalStudents: mockCompanies.length,
         totalStaff: 1,
         totalAdmin: 1,
         totalCompanies: localCompanies.length,
-        approvedResumes: students.filter(s => s.resumeStatus === 'approved').length,
-        pendingResumes: students.filter(s => s.resumeStatus === 'pending').length,
-        rejectedResumes: students.filter(s => s.resumeStatus === 'rejected').length,
-        totalResumes: students.length
+        approvedResumes: 0,
+        pendingResumes: 0,
+        rejectedResumes: 0,
+        totalResumes: 0
       });
     }
   };
