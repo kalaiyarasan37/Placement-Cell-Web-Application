@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import NavBar from './NavBar';
 import UserManagement from './UserManagement';
@@ -154,11 +153,11 @@ const AdminPanel: React.FC = () => {
           </TabsContent>
           
           <TabsContent value="student-management">
-            <UserManagement initialUsers={studentUsers} userType="student" />
+            <UserManagement userType="student" />
           </TabsContent>
           
           <TabsContent value="staff-management">
-            <UserManagement initialUsers={staffUsers} userType="staff" />
+            <UserManagement userType="staff" />
           </TabsContent>
           
           <TabsContent value="companies">

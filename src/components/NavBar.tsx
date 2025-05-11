@@ -30,7 +30,7 @@ const NavBar: React.FC<NavBarProps> = ({ title }) => {
         {currentUser && (
           <>
             <span className="hidden md:block">
-              Welcome, {currentUser.name}
+              Welcome, {currentUser.email?.split('@')[0] || 'User'}
             </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
