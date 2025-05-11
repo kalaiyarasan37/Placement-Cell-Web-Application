@@ -63,7 +63,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        let query = supabase.from('profiles').select('id, name, role');
+        let query = supabase.from('profiles').select('id, name, role, email');
         
         if (userType) {
           query = query.eq('role', userType);
@@ -134,13 +134,15 @@ const UserManagement: React.FC<UserManagementProps> = ({
       // Add new user
       setIsLoading(true);
       try {
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        // First, create auth user with Supabase
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
-          email_confirm: true,
-          user_metadata: {
-            name: formData.name,
-            role: formData.role
+          options: {
+            data: {
+              name: formData.name,
+              role: formData.role
+            }
           }
         });
         
@@ -154,8 +156,37 @@ const UserManagement: React.FC<UserManagementProps> = ({
           return;
         }
 
+        if (!authData.user) {
+          toast({
+            title: "Error",
+            description: "Failed to create user account",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // Create profile record manually to ensure it exists even before email confirmation
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            name: formData.name,
+            role: formData.role,
+            email: formData.email
+          });
+
+        if (profileError) {
+          toast({
+            title: "Error Creating Profile",
+            description: profileError.message,
+            variant: "destructive",
+          });
+          // Continue anyway as the user auth was created
+        }
+
         // Refresh user list
-        let query = supabase.from('profiles').select('id, name, role');
+        let query = supabase.from('profiles').select('id, name, role, email');
         
         if (userType) {
           query = query.eq('role', userType);
@@ -170,7 +201,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
         setIsAddDialogOpen(false);
         toast({
           title: "User Added",
-          description: `${formData.name} has been added as a ${formData.role}.`,
+          description: `${formData.name} has been added as a ${formData.role}. They will need to confirm their email before logging in.`,
         });
       } catch (error) {
         console.error('Error adding user:', error);
@@ -189,7 +220,11 @@ const UserManagement: React.FC<UserManagementProps> = ({
         // Update profile data
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ name: formData.name, role: formData.role })
+          .update({ 
+            name: formData.name, 
+            role: formData.role,
+            email: formData.email
+          })
           .eq('id', formData.id);
         
         if (profileError) {
@@ -204,10 +239,9 @@ const UserManagement: React.FC<UserManagementProps> = ({
         
         // Update auth data if password was provided
         if (formData.password) {
-          const { error: authError } = await supabase.auth.admin.updateUserById(
-            formData.id,
-            { password: formData.password }
-          );
+          const { error: authError } = await supabase.auth.updateUser({
+            password: formData.password
+          });
           
           if (authError) {
             toast({
@@ -219,7 +253,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
         }
 
         // Refresh user list
-        let query = supabase.from('profiles').select('id, name, role');
+        let query = supabase.from('profiles').select('id, name, role, email');
         
         if (userType) {
           query = query.eq('role', userType);
@@ -253,18 +287,28 @@ const UserManagement: React.FC<UserManagementProps> = ({
     if (currentUser) {
       setIsLoading(true);
       try {
+        // Delete the user from auth system
         const { error } = await supabase.auth.admin.deleteUser(currentUser.id);
         
         if (error) {
-          toast({
-            title: "Error Deleting User",
-            description: error.message,
-            variant: "destructive",
-          });
-          setIsLoading(false);
-          return;
+          // If deleting from auth fails, try deleting just from profiles
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .delete()
+            .eq('id', currentUser.id);
+            
+          if (profileError) {
+            toast({
+              title: "Error Deleting User",
+              description: profileError.message,
+              variant: "destructive",
+            });
+            setIsLoading(false);
+            return;
+          }
         }
 
+        // Update user list in state
         setUsers(users.filter(u => u.id !== currentUser.id));
         setIsDeleteDialogOpen(false);
         toast({
@@ -325,6 +369,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
               {!userType && <TableHead>Role</TableHead>}
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -332,7 +377,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
           <TableBody>
             {users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={userType ? 2 : 3} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={userType ? 3 : 4} className="text-center py-10 text-muted-foreground">
                   No users found
                 </TableCell>
               </TableRow>
@@ -340,6 +385,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
               users.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell>{user.name}</TableCell>
+                  <TableCell>{user.email || 'N/A'}</TableCell>
                   {!userType && <TableCell className="capitalize">{user.role}</TableCell>}
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -455,6 +501,16 @@ const UserManagement: React.FC<UserManagementProps> = ({
                 id="edit-name" 
                 name="name" 
                 value={formData.name} 
+                onChange={handleInputChange} 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input 
+                id="edit-email" 
+                name="email" 
+                type="email" 
+                value={formData.email} 
                 onChange={handleInputChange} 
               />
             </div>
