@@ -30,6 +30,7 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { Edit, Plus, Trash } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
+import { demoCredentials } from '../data/demoCredentials';
 
 interface User {
   id: string;
@@ -63,28 +64,61 @@ const UserManagement: React.FC<UserManagementProps> = ({
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        let query = supabase.from('profiles').select('id, name, role, email');
+        // Get auth users
+        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+        
+        if (authError) {
+          console.error('Error fetching auth users:', authError);
+          // Use demo data if auth API fails
+          let filteredUsers = Object.values(demoCredentials);
+          if (userType) {
+            filteredUsers = filteredUsers.filter(user => user.role === userType);
+          }
+          setUsers(filteredUsers as User[]);
+          setIsLoading(false);
+          return;
+        }
+
+        // Get profiles to match with auth users
+        let query = supabase.from('profiles').select('id, name, role');
         
         if (userType) {
           query = query.eq('role', userType);
         }
         
-        const { data, error } = await query;
+        const { data: profilesData, error: profilesError } = await query;
         
-        if (error) {
-          console.error('Error fetching users:', error);
-          toast({
-            title: "Error",
-            description: "Failed to load users",
-            variant: "destructive",
-          });
+        if (profilesError) {
+          console.error('Error fetching profiles:', profilesError);
+          // Use demo data if profiles fetch fails
+          let filteredUsers = Object.values(demoCredentials);
+          if (userType) {
+            filteredUsers = filteredUsers.filter(user => user.role === userType);
+          }
+          setUsers(filteredUsers as User[]);
+          setIsLoading(false);
           return;
         }
         
-        setUsers(data as User[]);
+        // Map profiles to users with email from auth
+        const usersWithEmail = profilesData?.map(profile => {
+          const authUser = authData.users.find(user => user.id === profile.id);
+          return {
+            ...profile,
+            email: authUser?.email || undefined
+          };
+        }) || [];
+        
+        setUsers(usersWithEmail as User[]);
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching users:', error);
+        // Fallback to demo users
+        let filteredUsers = Object.values(demoCredentials);
+        if (userType) {
+          filteredUsers = filteredUsers.filter(user => user.role === userType);
+        }
+        setUsers(filteredUsers as User[]);
         setIsLoading(false);
       }
     };
@@ -172,8 +206,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
           .insert({
             id: authData.user.id,
             name: formData.name,
-            role: formData.role,
-            email: formData.email
+            role: formData.role
           });
 
         if (profileError) {
@@ -185,17 +218,28 @@ const UserManagement: React.FC<UserManagementProps> = ({
           // Continue anyway as the user auth was created
         }
 
-        // Refresh user list
-        let query = supabase.from('profiles').select('id, name, role, email');
+        // Refresh user list with updated data
+        // Get auth users
+        const { data: refreshAuthData } = await supabase.auth.admin.listUsers();
+        
+        // Get profiles
+        let query = supabase.from('profiles').select('id, name, role');
         
         if (userType) {
           query = query.eq('role', userType);
         }
         
-        const { data } = await query;
+        const { data: refreshProfilesData } = await query;
         
-        if (data) {
-          setUsers(data as User[]);
+        if (refreshProfilesData) {
+          const updatedUsers = refreshProfilesData.map(profile => {
+            const authUser = refreshAuthData?.users.find(user => user.id === profile.id);
+            return {
+              ...profile,
+              email: authUser?.email || undefined
+            };
+          });
+          setUsers(updatedUsers as User[]);
         }
         
         setIsAddDialogOpen(false);
@@ -222,8 +266,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
           .from('profiles')
           .update({ 
             name: formData.name, 
-            role: formData.role,
-            email: formData.email
+            role: formData.role
           })
           .eq('id', formData.id);
         
@@ -252,17 +295,28 @@ const UserManagement: React.FC<UserManagementProps> = ({
           }
         }
 
-        // Refresh user list
-        let query = supabase.from('profiles').select('id, name, role, email');
+        // Refresh user list with updated data
+        // Get auth users
+        const { data: refreshAuthData } = await supabase.auth.admin.listUsers();
+        
+        // Get profiles
+        let query = supabase.from('profiles').select('id, name, role');
         
         if (userType) {
           query = query.eq('role', userType);
         }
         
-        const { data } = await query;
+        const { data: refreshProfilesData } = await query;
         
-        if (data) {
-          setUsers(data as User[]);
+        if (refreshProfilesData) {
+          const updatedUsers = refreshProfilesData.map(profile => {
+            const authUser = refreshAuthData?.users.find(user => user.id === profile.id);
+            return {
+              ...profile,
+              email: authUser?.email || undefined
+            };
+          });
+          setUsers(updatedUsers as User[]);
         }
         
         setIsEditDialogOpen(false);
