@@ -82,6 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
+        console.error('Login error:', error.message);
         toast({
           title: "Login failed",
           description: error.message,
@@ -98,11 +99,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setCurrentUser(null);
-    setSession(null);
-    setUserRole(null);
-    localStorage.removeItem('currentUser');
+    try {
+      await supabase.auth.signOut();
+      setCurrentUser(null);
+      setSession(null);
+      setUserRole(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        title: "Logout failed",
+        description: "An error occurred during logout.",
+        variant: "destructive",
+      });
+    }
   };
 
   const updateCredentials = async (email: string, password: string) => {

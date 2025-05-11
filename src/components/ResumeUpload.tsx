@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from '@/components/ui/use-toast';
 import { Upload } from 'lucide-react';
+import { supabase } from '../integrations/supabase/client';
 
 interface ResumeUploadProps {
   studentId: string;
@@ -51,26 +52,45 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
     setUploading(true);
     
     try {
-      // In a real app, this would upload to a server
-      // For mock data, we'll create a fake URL
-      const mockUrl = `/uploads/${studentId}-${file.name}`;
+      // Upload to Supabase Storage
+      const fileName = `${studentId}-${Date.now()}.pdf`;
       
-      // Simulate upload delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Upload file to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('resumes')
+        .upload(fileName, file);
       
-      onUploadSuccess(mockUrl);
+      if (error) {
+        throw error;
+      }
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('resumes')
+        .getPublicUrl(data.path);
+      
+      // Update student record in DB
+      await supabase
+        .from('students')
+        .update({ 
+          resume_url: publicUrl,
+          resume_status: 'pending'
+        })
+        .eq('user_id', studentId);
+      
+      onUploadSuccess(publicUrl);
       
       toast({
         title: "Resume uploaded successfully",
         description: "Your resume has been uploaded and is pending review",
       });
     } catch (error) {
+      console.error("Upload error:", error);
       toast({
         title: "Upload failed",
         description: "There was a problem uploading your resume",
         variant: "destructive",
       });
-      console.error("Upload error:", error);
     } finally {
       setUploading(false);
     }

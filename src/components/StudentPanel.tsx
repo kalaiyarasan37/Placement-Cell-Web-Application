@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -14,19 +14,51 @@ import { companies } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import ResumeUpload from './ResumeUpload';
 import ResumeViewer from './ResumeViewer';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
 
 interface StudentPanelProps {
   studentId: string;
 }
 
 const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
-  const [resumeUrl, setResumeUrl] = useState<string | undefined>('/mock-resume.pdf');
+  const { currentUser } = useAuth();
+  const [resumeUrl, setResumeUrl] = useState<string | undefined>(undefined);
   const [resumeStatus, setResumeStatus] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [resumeNotes, setResumeNotes] = useState('');
   const [isViewResumeDialogOpen, setIsViewResumeDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<typeof companies[0] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  useEffect(() => {
+    const fetchStudentData = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('students')
+          .select('resume_url, resume_status')
+          .eq('user_id', studentId)
+          .single();
+        
+        if (error) {
+          console.error('Error fetching student data:', error);
+          return;
+        }
+        
+        if (data) {
+          setResumeUrl(data.resume_url);
+          setResumeStatus(data.resume_status as 'pending' | 'approved' | 'rejected');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchStudentData();
+  }, [studentId]);
   
   const handleResumeUpload = (url: string) => {
     setResumeUrl(url);
@@ -57,6 +89,10 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
     });
     setIsApplyDialogOpen(false);
   };
+  
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
   
   return (
     <div className="panel-container">
