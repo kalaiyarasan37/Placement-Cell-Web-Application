@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   username: string;
@@ -27,7 +26,7 @@ export interface Company {
   deadline: string;
   requirements: string[];
   location: string;
-  postedBy: string;
+  posted_by: string;  // Changed from postedBy to posted_by to match Supabase schema
 }
 
 // Mock users for login
@@ -92,7 +91,7 @@ export const students: Student[] = [
   },
 ];
 
-// Mock companies
+// Mock companies - updated to use posted_by instead of postedBy
 export const companies: Company[] = [
   {
     id: '1',
@@ -102,7 +101,7 @@ export const companies: Company[] = [
     deadline: '2025-06-15',
     requirements: ['Strong programming skills', 'Problem-solving abilities', 'Team player'],
     location: 'San Francisco, CA',
-    postedBy: 'Admin User',
+    posted_by: 'Admin User',
   },
   {
     id: '2',
@@ -112,7 +111,7 @@ export const companies: Company[] = [
     deadline: '2025-05-30',
     requirements: ['Finance or related degree', 'Analytical skills', 'Excel proficiency'],
     location: 'New York, NY',
-    postedBy: 'Staff Member',
+    posted_by: 'Staff Member',
   },
   {
     id: '3',
@@ -122,6 +121,6 @@ export const companies: Company[] = [
     deadline: '2025-07-01',
     requirements: ['Engineering background', 'Environmental knowledge', 'Project management skills'],
     location: 'Seattle, WA',
-    postedBy: 'Admin User',
+    posted_by: 'Admin User',
   },
 ];

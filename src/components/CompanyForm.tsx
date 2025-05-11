@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,9 +39,26 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       positions: [],
       requirements: [],
       deadline: new Date().toISOString().split('T')[0],
-      postedBy: currentUser?.id || '',
+      posted_by: currentUser?.id || '',
     }
   );
+  
+  // Update form data when company prop changes
+  useEffect(() => {
+    if (company) {
+      setFormData(company);
+    } else {
+      setFormData({
+        name: '',
+        description: '',
+        location: '',
+        positions: [],
+        requirements: [],
+        deadline: new Date().toISOString().split('T')[0],
+        posted_by: currentUser?.id || '',
+      });
+    }
+  }, [company, currentUser]);
   
   const [newPosition, setNewPosition] = useState('');
   const [newRequirement, setNewRequirement] = useState('');
@@ -93,14 +110,15 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       setIsSubmitting(true);
       
       // Format the data for Supabase
+      // Ensure all required fields are present
       const companyData = {
-        name: formData.name,
-        description: formData.description,
-        location: formData.location,
-        positions: formData.positions,
-        requirements: formData.requirements,
-        deadline: formData.deadline,
-        posted_by: currentUser?.id
+        name: formData.name || '',
+        description: formData.description || '',
+        location: formData.location || '',
+        positions: formData.positions || [],
+        requirements: formData.requirements || [],
+        deadline: formData.deadline || new Date().toISOString().split('T')[0],
+        posted_by: currentUser?.id || ''
       };
       
       let result;
@@ -123,9 +141,8 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
         throw result.error;
       }
       
-      // Call the onSave prop with the Supabase response data
-      const savedCompany = result.data?.[0] || formData;
-      onSave(savedCompany);
+      // Call the onSave prop with the data
+      onSave(companyData);
       
       toast({
         title: company ? "Company Updated" : "Company Added",

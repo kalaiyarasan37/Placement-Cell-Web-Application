@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import UserManagement from './UserManagement';
@@ -36,6 +37,7 @@ const AdminPanel: React.FC = () => {
       }
       
       if (data && data.length > 0) {
+        // Convert data to match our Company interface
         setLocalCompanies(data as Company[]);
       } else {
         // If no companies found in DB, use mock data
@@ -127,7 +129,7 @@ const AdminPanel: React.FC = () => {
             location: companyData.location,
             positions: companyData.positions,
             requirements: companyData.requirements,
-            deadline: companyData.deadline
+            deadline: companyData.deadline,
           })
           .eq('id', selectedCompany.id);
           
@@ -148,8 +150,13 @@ const AdminPanel: React.FC = () => {
       } else {
         // Add new company
         const newCompanyData = {
-          ...companyData,
-          posted_by: currentUser?.id || "1",
+          name: companyData.name,
+          description: companyData.description,
+          location: companyData.location,
+          positions: companyData.positions,
+          requirements: companyData.requirements,
+          deadline: companyData.deadline,
+          posted_by: currentUser?.id || "1"
         };
         
         const { data, error } = await supabase

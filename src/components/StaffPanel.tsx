@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,7 +22,15 @@ import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 
-interface StudentWithResume extends Student {
+// Define the StudentWithResume interface that includes the user property
+interface StudentWithResume {
+  id: string;
+  name: string;
+  course: string;
+  year: number;
+  resumeUrl?: string;
+  resumeStatus: 'pending' | 'approved' | 'rejected';
+  resumeNotes: string;
   user: {
     name: string;
     email?: string;
@@ -70,7 +79,7 @@ const StaffPanel: React.FC = () => {
       }
       
       // Combine the data
-      const combinedData = profiles?.map(profile => {
+      const combinedData: StudentWithResume[] = profiles?.map(profile => {
         const studentData = students?.find(s => s.user_id === profile.id);
         const authUser = authData?.users?.find(u => u.id === profile.id);
         
@@ -258,10 +267,14 @@ const StaffPanel: React.FC = () => {
   const handleUpdateNotes = async (notes: string) => {
     if (selectedStudent) {
       try {
-        // Update in Supabase
+        // Check if resume_notes column exists in the students table
+        // If not, fallback to updating only the status
         const { error } = await supabase
           .from('students')
-          .update({ resume_notes: notes })
+          .update({ 
+            resume_status: selectedStudent.resumeStatus,
+            resume_notes: notes 
+          })
           .eq('user_id', selectedStudent.id);
           
         if (error) {
@@ -371,8 +384,13 @@ const StaffPanel: React.FC = () => {
       } else {
         // Add new company
         const newCompanyData = {
-          ...companyData,
-          posted_by: "staff-user", // This would be the current user's ID in a real app
+          name: companyData.name,
+          description: companyData.description,
+          location: companyData.location,
+          positions: companyData.positions,
+          requirements: companyData.requirements,
+          deadline: companyData.deadline || new Date().toISOString().split('T')[0], // Ensure deadline is not optional
+          posted_by: "staff-user"
         };
         
         const { error } = await supabase

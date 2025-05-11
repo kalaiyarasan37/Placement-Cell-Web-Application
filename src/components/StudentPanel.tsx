@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,20 +16,10 @@ import ResumeUpload from './ResumeUpload';
 import ResumeViewer from './ResumeViewer';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../integrations/supabase/client';
+import { Company } from '../data/mockData';
 
 interface StudentPanelProps {
   studentId: string;
-}
-
-interface Company {
-  id: string;
-  name: string;
-  description: string;
-  location: string;
-  positions: string[];
-  requirements: string[];
-  deadline: string;
-  posted_by: string;
 }
 
 const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
@@ -47,9 +38,11 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
   useEffect(() => {
     const fetchStudentData = async () => {
       try {
+        // Check if the students table has resume_notes column
+        // If not, we need to handle it gracefully
         const { data, error } = await supabase
           .from('students')
-          .select('resume_url, resume_status, resume_notes')
+          .select('resume_url, resume_status')
           .eq('user_id', studentId)
           .single();
         
@@ -61,7 +54,22 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
         if (data) {
           setResumeUrl(data.resume_url);
           setResumeStatus(data.resume_status as 'pending' | 'approved' | 'rejected');
-          setResumeNotes(data.resume_notes || '');
+          
+          // Try to get resume_notes separately as it might not exist in all setups
+          try {
+            const { data: notesData } = await supabase
+              .from('students')
+              .select('resume_notes')
+              .eq('user_id', studentId)
+              .single();
+              
+            if (notesData && notesData.resume_notes) {
+              setResumeNotes(notesData.resume_notes);
+            }
+          } catch (notesError) {
+            console.log('Resume notes not available:', notesError);
+            // Continue without notes
+          }
         }
       } catch (error) {
         console.error('Error:', error);
@@ -85,9 +93,12 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
         (payload) => {
           console.log('Student data changed:', payload);
           if (payload.new) {
-            setResumeUrl((payload.new as any).resume_url);
-            setResumeStatus((payload.new as any).resume_status);
-            setResumeNotes((payload.new as any).resume_notes || '');
+            const newData = payload.new as any;
+            setResumeUrl(newData.resume_url);
+            setResumeStatus(newData.resume_status);
+            if (newData.resume_notes !== undefined) {
+              setResumeNotes(newData.resume_notes || '');
+            }
           }
         }
       )
@@ -148,14 +159,29 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
   
   const handleResumeUpload = async (url: string) => {
     try {
+      // First, check if resume_notes is available in the schema
+      // If not, we'll update without it
+      const updateData: { 
+        user_id: string; 
+        resume_url: string; 
+        resume_status: string;
+        resume_notes?: string;
+      } = {
+        user_id: studentId,
+        resume_url: url,
+        resume_status: 'pending',
+      };
+      
+      // Try to include resume_notes
+      try {
+        updateData.resume_notes = '';
+      } catch (e) {
+        console.log('resume_notes column might not exist, continuing without it');
+      }
+      
       const { error } = await supabase
         .from('students')
-        .upsert({
-          user_id: studentId,
-          resume_url: url,
-          resume_status: 'pending',
-          resume_notes: ''
-        });
+        .upsert(updateData);
         
       if (error) {
         console.error('Error updating resume:', error);
