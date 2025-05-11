@@ -4,9 +4,9 @@ import Login from '../components/Login';
 import AdminPanel from '../components/AdminPanel';
 import StaffPanel from '../components/StaffPanel';
 import StudentPanel from '../components/StudentPanel';
-import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
-const PanelRouter: React.FC = () => {
+const Index: React.FC = () => {
   const { currentUser, userRole } = useAuth();
 
   if (!currentUser || !userRole) {
@@ -23,14 +23,6 @@ const PanelRouter: React.FC = () => {
     default:
       return <Login />;
   }
-};
-
-const Index: React.FC = () => {
-  return (
-    <AuthProvider>
-      <PanelRouter />
-    </AuthProvider>
-  );
 };
 
 export default Index;
