@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import UserManagement from './UserManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { students } from '../data/mockData';
+import { students, companies as mockCompanies } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
@@ -58,13 +57,23 @@ const AdminPanel: React.FC = () => {
   const fetchDashboardStats = async () => {
     try {
       // Fetch counts of profiles by role
-      const { data: profileCounts, error: profileError } = await supabase
+      const { data: profileCountsAdmin, error: profileErrorAdmin } = await supabase
         .from('profiles')
-        .select('role, count')
-        .group('role');
+        .select('id')
+        .eq('role', 'admin');
       
-      if (profileError) {
-        console.error('Error fetching profile counts:', profileError);
+      const { data: profileCountsStaff, error: profileErrorStaff } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'staff');
+        
+      const { data: profileCountsStudent, error: profileErrorStudent } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'student');
+      
+      if (profileErrorAdmin || profileErrorStaff || profileErrorStudent) {
+        console.error('Error fetching profile counts:', profileErrorAdmin || profileErrorStaff || profileErrorStudent);
       }
       
       // Fetch company count
@@ -77,22 +86,32 @@ const AdminPanel: React.FC = () => {
       }
       
       // Fetch resume counts by status
-      const { data: resumeCounts, error: resumeError } = await supabase
+      const { data: approvedResumes, error: approvedError } = await supabase
         .from('students')
-        .select('resume_status, count')
-        .group('resume_status');
+        .select('id')
+        .eq('resume_status', 'approved');
+        
+      const { data: pendingResumes, error: pendingError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('resume_status', 'pending');
+        
+      const { data: rejectedResumes, error: rejectedError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('resume_status', 'rejected');
       
-      if (resumeError) {
-        console.error('Error fetching resume counts:', resumeError);
+      if (approvedError || pendingError || rejectedError) {
+        console.error('Error fetching resume counts:', approvedError || pendingError || rejectedError);
       }
 
       // Parse and set statistics
       const newStats = { ...stats };
       
-      if (profileCounts) {
-        newStats.totalStudents = profileCounts.find(p => p.role === 'student')?.count || 0;
-        newStats.totalStaff = profileCounts.find(p => p.role === 'staff')?.count || 0;
-        newStats.totalAdmin = profileCounts.find(p => p.role === 'admin')?.count || 0;
+      if (profileCountsAdmin && profileCountsStaff && profileCountsStudent) {
+        newStats.totalAdmin = profileCountsAdmin.length || 0;
+        newStats.totalStaff = profileCountsStaff.length || 0;
+        newStats.totalStudents = profileCountsStudent.length || 0;
         newStats.totalUsers = newStats.totalStudents + newStats.totalStaff + newStats.totalAdmin;
       }
       
@@ -100,10 +119,10 @@ const AdminPanel: React.FC = () => {
         newStats.totalCompanies = companyCount;
       }
       
-      if (resumeCounts) {
-        newStats.approvedResumes = resumeCounts.find(r => r.resume_status === 'approved')?.count || 0;
-        newStats.pendingResumes = resumeCounts.find(r => r.resume_status === 'pending')?.count || 0;
-        newStats.rejectedResumes = resumeCounts.find(r => r.resume_status === 'rejected')?.count || 0;
+      if (approvedResumes && pendingResumes && rejectedResumes) {
+        newStats.approvedResumes = approvedResumes.length || 0;
+        newStats.pendingResumes = pendingResumes.length || 0;
+        newStats.rejectedResumes = rejectedResumes.length || 0;
         newStats.totalResumes = newStats.approvedResumes + newStats.pendingResumes + newStats.rejectedResumes;
       }
       
@@ -215,7 +234,7 @@ const AdminPanel: React.FC = () => {
       if (error) {
         console.error('Error fetching companies:', error);
         // Fall back to mock data if there's an error
-        setLocalCompanies(companies as unknown as Company[]);
+        setLocalCompanies(mockCompanies);
         return;
       }
       
@@ -224,11 +243,11 @@ const AdminPanel: React.FC = () => {
         setLocalCompanies(data as unknown as Company[]);
       } else {
         // If no companies found in DB, use mock data
-        setLocalCompanies(companies as unknown as Company[]);
+        setLocalCompanies(mockCompanies);
       }
     } catch (error) {
       console.error('Error:', error);
-      setLocalCompanies(companies as unknown as Company[]);
+      setLocalCompanies(mockCompanies);
     } finally {
       setIsLoading(false);
     }
