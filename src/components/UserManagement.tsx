@@ -102,7 +102,9 @@ const UserManagement: React.FC<UserManagementProps> = ({
         
         // Map profiles to users with email from auth
         const usersWithEmail = profilesData?.map(profile => {
-          const authUser = authData.users.find(user => user.id === profile.id);
+          // Type assertion to make TypeScript happy since we know authData.users exists
+          const authUsers = authData?.users || [];
+          const authUser = authUsers.find(user => user.id === profile.id);
           return {
             ...profile,
             email: authUser?.email || undefined
@@ -220,7 +222,19 @@ const UserManagement: React.FC<UserManagementProps> = ({
 
         // Refresh user list with updated data
         // Get auth users
-        const { data: refreshAuthData } = await supabase.auth.admin.listUsers();
+        const { data: refreshAuthData, error: refreshAuthError } = await supabase.auth.admin.listUsers();
+        
+        if (refreshAuthError) {
+          // If there's an error refreshing, show a message but continue
+          toast({
+            title: "Warning",
+            description: "User created but couldn't refresh user list",
+            variant: "default",
+          });
+          setIsAddDialogOpen(false);
+          setIsLoading(false);
+          return;
+        }
         
         // Get profiles
         let query = supabase.from('profiles').select('id, name, role');
@@ -229,11 +243,24 @@ const UserManagement: React.FC<UserManagementProps> = ({
           query = query.eq('role', userType);
         }
         
-        const { data: refreshProfilesData } = await query;
+        const { data: refreshProfilesData, error: refreshProfilesError } = await query;
         
-        if (refreshProfilesData) {
+        if (refreshProfilesError) {
+          toast({
+            title: "Warning",
+            description: "User created but couldn't refresh user list",
+            variant: "default",
+          });
+          setIsAddDialogOpen(false);
+          setIsLoading(false);
+          return;
+        }
+        
+        if (refreshProfilesData && refreshAuthData) {
           const updatedUsers = refreshProfilesData.map(profile => {
-            const authUser = refreshAuthData?.users.find(user => user.id === profile.id);
+            // Type assertion to make TypeScript happy
+            const authUsers = refreshAuthData?.users || [];
+            const authUser = authUsers.find(user => user.id === profile.id);
             return {
               ...profile,
               email: authUser?.email || undefined
@@ -297,7 +324,19 @@ const UserManagement: React.FC<UserManagementProps> = ({
 
         // Refresh user list with updated data
         // Get auth users
-        const { data: refreshAuthData } = await supabase.auth.admin.listUsers();
+        const { data: refreshAuthData, error: refreshAuthError } = await supabase.auth.admin.listUsers();
+        
+        if (refreshAuthError) {
+          // If there's an error refreshing, show a message but continue
+          toast({
+            title: "Warning",
+            description: "User updated but couldn't refresh user list",
+            variant: "default",
+          });
+          setIsEditDialogOpen(false);
+          setIsLoading(false);
+          return;
+        }
         
         // Get profiles
         let query = supabase.from('profiles').select('id, name, role');
@@ -306,11 +345,24 @@ const UserManagement: React.FC<UserManagementProps> = ({
           query = query.eq('role', userType);
         }
         
-        const { data: refreshProfilesData } = await query;
+        const { data: refreshProfilesData, error: refreshProfilesError } = await query;
         
-        if (refreshProfilesData) {
+        if (refreshProfilesError) {
+          toast({
+            title: "Warning",
+            description: "User updated but couldn't refresh user list",
+            variant: "default",
+          });
+          setIsEditDialogOpen(false);
+          setIsLoading(false);
+          return;
+        }
+        
+        if (refreshProfilesData && refreshAuthData) {
           const updatedUsers = refreshProfilesData.map(profile => {
-            const authUser = refreshAuthData?.users.find(user => user.id === profile.id);
+            // Type assertion to make TypeScript happy
+            const authUsers = refreshAuthData?.users || [];
+            const authUser = authUsers.find(user => user.id === profile.id);
             return {
               ...profile,
               email: authUser?.email || undefined
