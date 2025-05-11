@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from '@/components/ui/use-toast';
 import { Upload } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ResumeUploadProps {
   studentId: string;
@@ -21,6 +22,7 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const { session } = useAuth();
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -48,6 +50,16 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
       });
       return;
     }
+
+    // Check if user is authenticated
+    if (!session) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to upload your resume",
+        variant: "destructive",
+      });
+      return;
+    }
     
     setUploading(true);
     
@@ -70,7 +82,7 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
         .getPublicUrl(data.path);
       
       // Update student record in DB
-      await supabase
+      const { error: updateError } = await supabase
         .from('students')
         .update({ 
           resume_url: publicUrl,
@@ -78,17 +90,21 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
         })
         .eq('user_id', studentId);
       
+      if (updateError) {
+        throw updateError;
+      }
+      
       onUploadSuccess(publicUrl);
       
       toast({
         title: "Resume uploaded successfully",
         description: "Your resume has been uploaded and is pending review",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload error:", error);
       toast({
         title: "Upload failed",
-        description: "There was a problem uploading your resume",
+        description: error.message || "There was a problem uploading your resume",
         variant: "destructive",
       });
     } finally {

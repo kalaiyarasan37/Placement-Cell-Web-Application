@@ -23,18 +23,11 @@ const Login: React.FC = () => {
     setError(null);
     
     try {
-      const success = await login(email, password);
-      if (success) {
-        toast({
-          title: "Login successful",
-          description: "Redirecting to your dashboard...",
-        });
-      } else {
-        setError("Invalid login credentials. Please check your email and password.");
-      }
-    } catch (err) {
+      await login(email, password);
+      // Login success handling is done in the AuthContext
+    } catch (err: any) {
       console.error("Login error:", err);
-      setError("An error occurred during login. Please try again.");
+      setError(err.message || "An error occurred during login. Please try again.");
     } finally {
       setIsLoading(false);
     }

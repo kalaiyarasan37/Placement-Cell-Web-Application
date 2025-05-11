@@ -63,6 +63,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (error) {
         console.error('Error fetching user role:', error);
+        toast({
+          title: "Error",
+          description: "Could not fetch user role. Please try logging in again.",
+          variant: "destructive",
+        });
         return;
       }
       
@@ -88,13 +93,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           description: error.message,
           variant: "destructive",
         });
-        return false;
+        throw error;
       }
 
-      return true;
-    } catch (error) {
-      console.error('Login error:', error);
+      if (data.session) {
+        toast({
+          title: "Login successful",
+          description: "Redirecting to your dashboard...",
+        });
+        return true;
+      }
+
       return false;
+    } catch (error) {
+      throw error;
     }
   };
 
@@ -104,6 +116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(null);
       setSession(null);
       setUserRole(null);
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out.",
+      });
     } catch (error) {
       console.error('Logout error:', error);
       toast({
@@ -144,7 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         title: "Credentials updated",
         description: "Your account information has been updated successfully.",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating credentials:', error);
       toast({
         title: "Update failed",
