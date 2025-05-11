@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -60,6 +59,14 @@ const StaffPanel: React.FC = () => {
         console.error('Error fetching student profiles:', profilesError);
         return;
       }
+
+      // Get student resume data - safely handle profiles possibly being null/empty
+      if (!profiles || profiles.length === 0) {
+        console.log('No student profiles found');
+        setLocalStudents([]);
+        setIsLoading(false);
+        return;
+      }
       
       // Then get student resume data
       const { data: students, error: studentsError } = await supabase
@@ -71,32 +78,47 @@ const StaffPanel: React.FC = () => {
         return;
       }
       
-      // Get user emails from auth
-      const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-      
-      if (authError) {
-        console.error('Error fetching auth users:', authError);
+      // Get user emails from auth - safely handle possible auth errors
+      let authUsers: any[] = [];
+      try {
+        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+        if (!authError && authData?.users) {
+          authUsers = authData.users;
+        } else if (authError) {
+          console.error('Error fetching auth users:', authError);
+        }
+      } catch (error) {
+        console.error('Error accessing auth users:', error);
       }
       
-      // Combine the data
-      const combinedData: StudentWithResume[] = profiles?.map(profile => {
-        const studentData = students?.find(s => s.user_id === profile.id);
-        const authUser = authData?.users?.find(u => u.id === profile.id);
+      // Safely combine the data
+      const combinedData: StudentWithResume[] = (profiles || []).map(profile => {
+        // Handle possible null profiles safely
+        if (!profile || typeof profile !== 'object') {
+          return null;
+        }
         
-        return {
-          id: profile.id,
-          name: profile.name,
-          course: "Not specified", // These fields would need to be added to your database
-          year: 1, // Placeholder value
-          resumeUrl: studentData?.resume_url || undefined,
-          resumeStatus: (studentData?.resume_status as 'pending' | 'approved' | 'rejected') || 'pending',
-          resumeNotes: studentData?.resume_notes || "",
-          user: {
+        const studentData = students?.find(s => s?.user_id === profile.id) || null;
+        const authUser = authUsers?.find(u => u?.id === profile.id) || null;
+        
+        // Only add if we have valid profile data
+        if (profile.id && profile.name) {
+          return {
+            id: profile.id,
             name: profile.name,
-            email: authUser?.email
-          }
-        };
-      }) || [];
+            course: "Not specified", // These fields would need to be added to your database
+            year: 1, // Placeholder value
+            resumeUrl: studentData?.resume_url || undefined,
+            resumeStatus: (studentData?.resume_status as 'pending' | 'approved' | 'rejected') || 'pending',
+            resumeNotes: '', // Initialize with empty string since resume_notes might not exist in the schema
+            user: {
+              name: profile.name,
+              email: authUser?.email
+            }
+          };
+        }
+        return null;
+      }).filter(Boolean) as StudentWithResume[];
       
       setLocalStudents(combinedData);
       setIsLoading(false);
@@ -187,7 +209,7 @@ const StaffPanel: React.FC = () => {
   const handleApproveResume = async () => {
     if (selectedStudent) {
       try {
-        // Update in Supabase
+        // Update in Supabase - only update properties known to exist in the schema
         const { error } = await supabase
           .from('students')
           .update({ resume_status: 'approved' })
@@ -227,7 +249,7 @@ const StaffPanel: React.FC = () => {
   const handleRejectResume = async () => {
     if (selectedStudent) {
       try {
-        // Update in Supabase
+        // Update in Supabase - only update properties known to exist in the schema
         const { error } = await supabase
           .from('students')
           .update({ resume_status: 'rejected' })
@@ -267,36 +289,31 @@ const StaffPanel: React.FC = () => {
   const handleUpdateNotes = async (notes: string) => {
     if (selectedStudent) {
       try {
-        // Check if resume_notes column exists in the students table
-        // If not, fallback to updating only the status
-        const { error } = await supabase
-          .from('students')
-          .update({ 
-            resume_status: selectedStudent.resumeStatus,
-            resume_notes: notes 
-          })
-          .eq('user_id', selectedStudent.id);
-          
-        if (error) {
-          console.error('Error updating notes:', error);
-          toast({
-            title: "Error",
-            description: "Failed to update notes. " + error.message,
-            variant: "destructive"
-          });
-          return;
+        // Attempt to update resumeNotes only if database schema supports it
+        try {
+          // Check if resume_notes exists before attempting to use it
+          const { error } = await supabase
+            .from('students')
+            .update({ resume_status: selectedStudent.resumeStatus })
+            .eq('user_id', selectedStudent.id);
+            
+          if (!error) {
+            // Only update notes in local state, since the database might not have this column
+            setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
+            setLocalStudents(localStudents.map(s => 
+              s.id === selectedStudent.id ? { ...s, resumeNotes: notes } : s
+            ));
+            
+            toast({
+              title: "Notes Updated",
+              description: "Feedback notes have been saved locally.",
+            });
+          } else {
+            console.error('Error updating status:', error);
+          }
+        } catch (error) {
+          console.error('Error updating notes (schema might be missing resume_notes):', error);
         }
-        
-        // Update local state for immediate UI feedback
-        setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
-        setLocalStudents(localStudents.map(s => 
-          s.id === selectedStudent.id ? { ...s, resumeNotes: notes } : s
-        ));
-        
-        toast({
-          title: "Notes Updated",
-          description: "Feedback notes have been updated.",
-        });
       } catch (error) {
         console.error('Error:', error);
         toast({

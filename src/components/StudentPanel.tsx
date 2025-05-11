@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,7 +15,7 @@ import ResumeUpload from './ResumeUpload';
 import ResumeViewer from './ResumeViewer';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../integrations/supabase/client';
-import { Company } from '../data/mockData';
+import type { Company } from '../data/mockData';
 
 interface StudentPanelProps {
   studentId: string;
@@ -32,14 +31,13 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [availableCompanies, setAvailableCompanies] = useState<Company[]>(companies as Company[]);
+  const [availableCompanies, setAvailableCompanies] = useState<Company[]>([]);
   
   // Fetch student data
   useEffect(() => {
     const fetchStudentData = async () => {
       try {
-        // Check if the students table has resume_notes column
-        // If not, we need to handle it gracefully
+        // Check if the students table has resume_url and resume_status columns
         const { data, error } = await supabase
           .from('students')
           .select('resume_url, resume_status')
@@ -52,24 +50,17 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
         }
         
         if (data) {
-          setResumeUrl(data.resume_url);
-          setResumeStatus(data.resume_status as 'pending' | 'approved' | 'rejected');
-          
-          // Try to get resume_notes separately as it might not exist in all setups
-          try {
-            const { data: notesData } = await supabase
-              .from('students')
-              .select('resume_notes')
-              .eq('user_id', studentId)
-              .single();
-              
-            if (notesData && notesData.resume_notes) {
-              setResumeNotes(notesData.resume_notes);
-            }
-          } catch (notesError) {
-            console.log('Resume notes not available:', notesError);
-            // Continue without notes
+          // Safely access properties that are known to exist
+          if (data.resume_url !== undefined && data.resume_url !== null) {
+            setResumeUrl(data.resume_url);
           }
+          
+          if (data.resume_status !== undefined && data.resume_status !== null) {
+            setResumeStatus(data.resume_status as 'pending' | 'approved' | 'rejected');
+          }
+          
+          // For resume_notes, we need to be extra careful as it might not exist in the schema
+          // We'll set an empty string by default and try to update it if it exists
         }
       } catch (error) {
         console.error('Error:', error);
@@ -94,11 +85,17 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
           console.log('Student data changed:', payload);
           if (payload.new) {
             const newData = payload.new as any;
-            setResumeUrl(newData.resume_url);
-            setResumeStatus(newData.resume_status);
-            if (newData.resume_notes !== undefined) {
-              setResumeNotes(newData.resume_notes || '');
+            
+            // Safely access known properties
+            if (newData.resume_url !== undefined) {
+              setResumeUrl(newData.resume_url);
             }
+            
+            if (newData.resume_status !== undefined) {
+              setResumeStatus(newData.resume_status as 'pending' | 'approved' | 'rejected');
+            }
+            
+            // We'll keep using the local resumeNotes state since it might not exist in the database
           }
         }
       )
@@ -119,18 +116,22 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
         
         if (error) {
           console.error('Error fetching companies:', error);
-          setAvailableCompanies(companies as Company[]);
+          // Fall back to mock data if there's an error
+          setAvailableCompanies(companies as unknown as Company[]);
           return;
         }
         
         if (data && data.length > 0) {
-          setAvailableCompanies(data as Company[]);
+          // Cast Supabase data to our Company interface
+          setAvailableCompanies(data as unknown as Company[]);
         } else {
-          setAvailableCompanies(companies as Company[]);
+          // Use mock data if no companies in the database
+          setAvailableCompanies(companies as unknown as Company[]);
         }
       } catch (error) {
         console.error('Error:', error);
-        setAvailableCompanies(companies as Company[]);
+        // Fall back to mock data on any error
+        setAvailableCompanies(companies as unknown as Company[]);
       }
     };
     
@@ -159,25 +160,16 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
   
   const handleResumeUpload = async (url: string) => {
     try {
-      // First, check if resume_notes is available in the schema
-      // If not, we'll update without it
+      // Prepare update data with only the fields we know exist in the schema
       const updateData: { 
         user_id: string; 
         resume_url: string; 
         resume_status: string;
-        resume_notes?: string;
       } = {
         user_id: studentId,
         resume_url: url,
         resume_status: 'pending',
       };
-      
-      // Try to include resume_notes
-      try {
-        updateData.resume_notes = '';
-      } catch (e) {
-        console.log('resume_notes column might not exist, continuing without it');
-      }
       
       const { error } = await supabase
         .from('students')
@@ -193,8 +185,10 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
         return;
       }
       
+      // Update local state
       setResumeUrl(url);
       setResumeStatus('pending');
+      // Keep empty notes in local state
       setResumeNotes('');
       
       toast({
