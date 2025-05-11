@@ -1,24 +1,23 @@
+
 import React, { useState } from 'react';
 import NavBar from './NavBar';
 import UserManagement from './UserManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { companies, students, users, User } from '../data/mockData';
+import { companies, students, users } from '../data/mockData';
 import CompanyCard from './CompanyCard';
 import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
 import { Company } from '../data/mockData';
-
-// Filter users by role for separate management sections
-const staffUsers = users.filter(user => user.role === 'staff');
-const studentUsers = users.filter(user => user.role === 'student');
+import { useAuth } from '../contexts/AuthContext';
 
 const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [localCompanies, setLocalCompanies] = useState(companies);
   const [isCompanyFormOpen, setIsCompanyFormOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | undefined>(undefined);
+  const { currentUser } = useAuth();
 
   const handleAddCompany = () => {
     setSelectedCompany(undefined);
@@ -46,7 +45,7 @@ const AdminPanel: React.FC = () => {
       const newCompany = {
         ...companyData,
         id: Date.now().toString(),
-        postedBy: "Admin", // This would come from the current user in a real app
+        postedBy: currentUser?.id || "Admin", // Use the current user's ID if available
       } as Company;
       
       setLocalCompanies([...localCompanies, newCompany]);
@@ -77,7 +76,7 @@ const AdminPanel: React.FC = () => {
                 <CardContent>
                   <div className="text-3xl font-bold">{students.length + 2}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {students.length} students + {staffUsers.length} staff + {users.filter(u => u.role === 'admin').length} admin
+                    {students.length} students + {users.filter(u => u.role === 'staff').length} staff + {users.filter(u => u.role === 'admin').length} admin
                   </p>
                 </CardContent>
               </Card>

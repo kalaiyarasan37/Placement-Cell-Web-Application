@@ -8,12 +8,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { toast } from "@/components/ui/use-toast";
 import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("admin");
   
   const { login } = useAuth();
   
@@ -30,6 +32,21 @@ const Login: React.FC = () => {
       setError(err.message || "An error occurred during login. Please try again.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Set demo credentials when tab changes
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    if (value === "admin") {
+      setEmail('admin@example.com');
+      setPassword('admin123');
+    } else if (value === "staff") {
+      setEmail('staff@example.com');
+      setPassword('staff123');
+    } else if (value === "student") {
+      setEmail('student@example.com');
+      setPassword('student123');
     }
   };
 
@@ -51,6 +68,14 @@ const Login: React.FC = () => {
             </Alert>
           )}
           
+          <Tabs defaultValue="admin" value={activeTab} onValueChange={handleTabChange} className="mb-4">
+            <TabsList className="grid grid-cols-3 w-full">
+              <TabsTrigger value="admin">Admin</TabsTrigger>
+              <TabsTrigger value="staff">Staff</TabsTrigger>
+              <TabsTrigger value="student">Student</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -86,7 +111,9 @@ const Login: React.FC = () => {
         
         <CardFooter className="flex flex-col">
           <p className="text-sm text-muted-foreground text-center w-full">
-            Demo credentials: admin@example.com / admin123
+            {activeTab === "admin" && "Demo credentials: admin@example.com / admin123"}
+            {activeTab === "staff" && "Demo credentials: staff@example.com / staff123"}
+            {activeTab === "student" && "Demo credentials: student@example.com / student123"}
           </p>
         </CardFooter>
       </Card>

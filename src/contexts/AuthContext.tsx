@@ -1,8 +1,8 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { demoCredentials } from '../data/demoCredentials';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -81,6 +81,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      // Check if the credentials match one of our demo users
+      const demoUser = Object.values(demoCredentials).find(
+        user => user.email === email && user.password === password
+      );
+
+      if (demoUser) {
+        // Create a mock user and session for demo purposes
+        const mockUser = {
+          id: demoUser.id,
+          email: demoUser.email,
+          app_metadata: {},
+          user_metadata: { name: demoUser.name },
+          aud: "authenticated",
+          created_at: new Date().toISOString()
+        } as User;
+
+        const mockSession = {
+          access_token: "demo_access_token",
+          refresh_token: "demo_refresh_token",
+          expires_in: 3600,
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          user: mockUser
+        } as unknown as Session;
+
+        setCurrentUser(mockUser);
+        setSession(mockSession);
+        setUserRole(demoUser.role);
+
+        toast({
+          title: "Login successful",
+          description: `Logged in as ${demoUser.role} using demo account.`,
+        });
+        return true;
+      }
+
+      // If not a demo user, proceed with real auth
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -112,6 +148,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      // Clear our demo user session if it exists
+      if (currentUser && Object.values(demoCredentials).some(demo => demo.id === currentUser.id)) {
+        setCurrentUser(null);
+        setSession(null);
+        setUserRole(null);
+        toast({
+          title: "Logged out",
+          description: "You have been successfully logged out from demo account.",
+        });
+        return;
+      }
+
+      // Otherwise use supabase logout
       await supabase.auth.signOut();
       setCurrentUser(null);
       setSession(null);
