@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,34 +29,73 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
 import { Edit, Plus, Trash } from 'lucide-react';
-import { User, users as mockUsers } from '../data/mockData';
+import { supabase } from '../integrations/supabase/client';
+
+interface User {
+  id: string;
+  name: string;
+  email?: string;
+  role: 'admin' | 'staff' | 'student';
+}
 
 interface UserManagementProps {
-  initialUsers?: User[];
   userType?: 'admin' | 'staff' | 'student';
 }
 
 const UserManagement: React.FC<UserManagementProps> = ({ 
-  initialUsers = mockUsers,
   userType
 }) => {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [formData, setFormData] = useState({
     id: '',
-    username: '',
+    email: '',
     password: '',
     name: '',
     role: userType || 'student' as 'admin' | 'staff' | 'student',
   });
 
+  // Fetch users from the database
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        let query = supabase.from('profiles').select('id, name, role');
+        
+        if (userType) {
+          query = query.eq('role', userType);
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+          console.error('Error fetching users:', error);
+          toast({
+            title: "Error",
+            description: "Failed to load users",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        setUsers(data as User[]);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        setIsLoading(false);
+      }
+    };
+    
+    fetchUsers();
+  }, [userType]);
+
   const handleAddUser = () => {
     setFormData({
-      id: Date.now().toString(),
-      username: '',
+      id: '',
+      email: '',
       password: '',
       name: '',
       role: userType || 'student',
@@ -67,7 +105,13 @@ const UserManagement: React.FC<UserManagementProps> = ({
 
   const handleEditUser = (user: User) => {
     setCurrentUser(user);
-    setFormData({ ...user });
+    setFormData({ 
+      id: user.id,
+      email: user.email || '',
+      password: '',
+      name: user.name,
+      role: user.role,
+    });
     setIsEditDialogOpen(true);
   };
 
@@ -85,35 +129,159 @@ const UserManagement: React.FC<UserManagementProps> = ({
     setFormData({ ...formData, role: value as 'admin' | 'staff' | 'student' });
   };
 
-  const saveUser = (isNewUser: boolean) => {
+  const saveUser = async (isNewUser: boolean) => {
     if (isNewUser) {
       // Add new user
-      setUsers([...users, formData]);
-      setIsAddDialogOpen(false);
-      toast({
-        title: "User Added",
-        description: `${formData.name} has been added as a ${formData.role}.`,
-      });
+      setIsLoading(true);
+      try {
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email: formData.email,
+          password: formData.password,
+          email_confirm: true,
+          user_metadata: {
+            name: formData.name,
+            role: formData.role
+          }
+        });
+        
+        if (authError) {
+          toast({
+            title: "Error Creating User",
+            description: authError.message,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // Refresh user list
+        let query = supabase.from('profiles').select('id, name, role');
+        
+        if (userType) {
+          query = query.eq('role', userType);
+        }
+        
+        const { data } = await query;
+        
+        if (data) {
+          setUsers(data as User[]);
+        }
+        
+        setIsAddDialogOpen(false);
+        toast({
+          title: "User Added",
+          description: `${formData.name} has been added as a ${formData.role}.`,
+        });
+      } catch (error) {
+        console.error('Error adding user:', error);
+        toast({
+          title: "Error",
+          description: "Failed to create user",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
     } else {
       // Update existing user
-      setUsers(users.map(u => u.id === formData.id ? formData : u));
-      setIsEditDialogOpen(false);
-      toast({
-        title: "User Updated",
-        description: `${formData.name}'s information has been updated.`,
-      });
+      setIsLoading(true);
+      try {
+        // Update profile data
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ name: formData.name, role: formData.role })
+          .eq('id', formData.id);
+        
+        if (profileError) {
+          toast({
+            title: "Error Updating User",
+            description: profileError.message,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+        
+        // Update auth data if password was provided
+        if (formData.password) {
+          const { error: authError } = await supabase.auth.admin.updateUserById(
+            formData.id,
+            { password: formData.password }
+          );
+          
+          if (authError) {
+            toast({
+              title: "Error Updating Password",
+              description: authError.message,
+              variant: "destructive",
+            });
+          }
+        }
+
+        // Refresh user list
+        let query = supabase.from('profiles').select('id, name, role');
+        
+        if (userType) {
+          query = query.eq('role', userType);
+        }
+        
+        const { data } = await query;
+        
+        if (data) {
+          setUsers(data as User[]);
+        }
+        
+        setIsEditDialogOpen(false);
+        toast({
+          title: "User Updated",
+          description: `${formData.name}'s information has been updated.`,
+        });
+      } catch (error) {
+        console.error('Error updating user:', error);
+        toast({
+          title: "Error",
+          description: "Failed to update user",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (currentUser) {
-      setUsers(users.filter(u => u.id !== currentUser.id));
-      setIsDeleteDialogOpen(false);
-      toast({
-        title: "User Deleted",
-        description: `${currentUser.name} has been removed from the system.`,
-        variant: "destructive",
-      });
+      setIsLoading(true);
+      try {
+        const { error } = await supabase.auth.admin.deleteUser(currentUser.id);
+        
+        if (error) {
+          toast({
+            title: "Error Deleting User",
+            description: error.message,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        setUsers(users.filter(u => u.id !== currentUser.id));
+        setIsDeleteDialogOpen(false);
+        toast({
+          title: "User Deleted",
+          description: `${currentUser.name} has been removed from the system.`,
+          variant: "destructive",
+        });
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete user",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -122,6 +290,17 @@ const UserManagement: React.FC<UserManagementProps> = ({
     'staff': 'Staff Members',
     'student': 'Students'
   };
+
+  if (isLoading && users.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{userType ? roleToTitle[userType] : 'User Management'}</CardTitle>
+          <CardDescription>Loading users...</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -146,38 +325,44 @@ const UserManagement: React.FC<UserManagementProps> = ({
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Username</TableHead>
               {!userType && <TableHead>Role</TableHead>}
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell>{user.name}</TableCell>
-                <TableCell>{user.username}</TableCell>
-                {!userType && <TableCell className="capitalize">{user.role}</TableCell>}
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => handleEditUser(user)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => handleDeleteUser(user)}
-                    >
-                      <Trash className="h-4 w-4" />
-                    </Button>
-                  </div>
+            {users.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={userType ? 2 : 3} className="text-center py-10 text-muted-foreground">
+                  No users found
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              users.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell>{user.name}</TableCell>
+                  {!userType && <TableCell className="capitalize">{user.role}</TableCell>}
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleEditUser(user)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteUser(user)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </CardContent>
@@ -199,15 +384,18 @@ const UserManagement: React.FC<UserManagementProps> = ({
                 name="name" 
                 value={formData.name} 
                 onChange={handleInputChange} 
+                required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email</Label>
               <Input 
-                id="username" 
-                name="username" 
-                value={formData.username} 
+                id="email" 
+                name="email"
+                type="email" 
+                value={formData.email} 
                 onChange={handleInputChange} 
+                required
               />
             </div>
             <div className="space-y-2">
@@ -218,6 +406,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
                 type="password" 
                 value={formData.password} 
                 onChange={handleInputChange} 
+                required
               />
             </div>
             {!userType && (
@@ -240,8 +429,12 @@ const UserManagement: React.FC<UserManagementProps> = ({
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-            <Button onClick={() => saveUser(true)}>Create User</Button>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button onClick={() => saveUser(true)} disabled={isLoading}>
+              {isLoading ? "Creating..." : "Create User"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -262,15 +455,6 @@ const UserManagement: React.FC<UserManagementProps> = ({
                 id="edit-name" 
                 name="name" 
                 value={formData.name} 
-                onChange={handleInputChange} 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-username">Username</Label>
-              <Input 
-                id="edit-username" 
-                name="username" 
-                value={formData.username} 
                 onChange={handleInputChange} 
               />
             </div>
@@ -306,8 +490,12 @@ const UserManagement: React.FC<UserManagementProps> = ({
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-            <Button onClick={() => saveUser(false)}>Save Changes</Button>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button onClick={() => saveUser(false)} disabled={isLoading}>
+              {isLoading ? "Saving..." : "Save Changes"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -329,8 +517,12 @@ const UserManagement: React.FC<UserManagementProps> = ({
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmDelete}>Delete User</Button>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={isLoading}>
+              {isLoading ? "Deleting..." : "Delete User"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

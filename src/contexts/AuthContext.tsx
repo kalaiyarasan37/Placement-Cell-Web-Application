@@ -9,7 +9,6 @@ interface AuthContextType {
   session: Session | null;
   userRole: string | null;
   login: (email: string, password: string) => Promise<boolean>;
-  signup: (email: string, password: string, name: string, role?: string) => Promise<boolean>;
   logout: () => void;
   updateCredentials: (email: string, password: string) => Promise<void>;
 }
@@ -98,44 +97,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signup = async (
-    email: string, 
-    password: string, 
-    name: string, 
-    role: string = 'student'
-  ): Promise<boolean> => {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name,
-            role,
-          }
-        }
-      });
-
-      if (error) {
-        toast({
-          title: "Signup failed",
-          description: error.message,
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      toast({
-        title: "Signup successful",
-        description: "Your account has been created. You may now log in.",
-      });
-      return true;
-    } catch (error) {
-      console.error('Signup error:', error);
-      return false;
-    }
-  };
-
   const logout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
@@ -191,7 +152,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         session,
         userRole,
         login,
-        signup,
         logout,
         updateCredentials,
       }}
