@@ -20,6 +20,34 @@ import { supabase } from '@/integrations/supabase/client';
 import UserManagement from './UserManagement';
 import CompanyForm from './CompanyForm';
 import { useAuth } from '@/contexts/AuthContext';
+import NavBar from './NavBar';
+import CompanyCard from './CompanyCard';
+import ResumeViewer from './ResumeViewer';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { 
+  Table, TableBody, TableCell, TableHead, 
+  TableHeader, TableRow 
+} from '@/components/ui/table';
+
+// Define the StudentWithResume interface
+interface StudentWithResume {
+  id: string;
+  name: string;
+  course: string;
+  year: number;
+  resumeUrl?: string;
+  resumeStatus: 'pending' | 'approved' | 'rejected';
+  resumeNotes: string;
+  user: {
+    name: string;
+    email?: string;
+  };
+}
 
 const AdminPanel = () => {
   const { currentUser } = useAuth();
@@ -36,6 +64,12 @@ const AdminPanel = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isCompanyFormOpen, setIsCompanyFormOpen] = useState(false);
   const [currentCompany, setCurrentCompany] = useState<any>(null);
+  const [selectedCompany, setSelectedCompany] = useState<any>(undefined);
+  
+  // Student management states
+  const [localStudents, setLocalStudents] = useState<StudentWithResume[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<StudentWithResume | null>(null);
+  const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
 
   // Fetch companies from Supabase
   const fetchCompanies = async () => {
@@ -65,6 +99,82 @@ const AdminPanel = () => {
         description: "An unexpected error occurred while fetching companies",
         variant: "destructive",
       });
+    }
+  };
+
+  // Function to fetch students with their resume data
+  const fetchStudents = async () => {
+    try {
+      // First get all profiles that are students
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, name, role')
+        .eq('role', 'student');
+        
+      if (profilesError) {
+        console.error('Error fetching student profiles:', profilesError);
+        return;
+      }
+
+      // Get student resume data - safely handle profiles possibly being null/empty
+      if (!profiles || profiles.length === 0) {
+        console.log('No student profiles found');
+        setLocalStudents([]);
+        return;
+      }
+      
+      // Then get student resume data
+      const { data: students, error: studentsError } = await supabase
+        .from('students')
+        .select('*');
+        
+      if (studentsError) {
+        console.error('Error fetching student resume data:', studentsError);
+        return;
+      }
+      
+      // Get user emails from auth - safely handle possible auth errors
+      let authUsers: any[] = [];
+      try {
+        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+        if (!authError && authData?.users) {
+          authUsers = authData.users;
+        } else if (authError) {
+          console.error('Error fetching auth users:', authError);
+        }
+      } catch (error) {
+        console.error('Error accessing auth users:', error);
+      }
+      
+      // Safely combine the data
+      const combinedData = profiles.map(profile => {
+        if (!profile) return null;
+        
+        const studentData = students?.find(s => s?.user_id === profile.id) || null;
+        const authUser = authUsers?.find(u => u?.id === profile.id) || null;
+        
+        // Only add if we have valid profile data
+        if (profile.id && profile.name) {
+          return {
+            id: profile.id,
+            name: profile.name,
+            course: "Not specified", // These fields would need to be added to your database
+            year: 1, // Placeholder value
+            resumeUrl: studentData?.resume_url || undefined,
+            resumeStatus: (studentData?.resume_status as 'pending' | 'approved' | 'rejected') || 'pending',
+            resumeNotes: '', // Initialize with empty string since resume_notes might not exist in the schema
+            user: {
+              name: profile.name,
+              email: authUser?.email
+            }
+          } as StudentWithResume;
+        }
+        return null;
+      }).filter(Boolean) as StudentWithResume[];
+      
+      setLocalStudents(combinedData);
+    } catch (error) {
+      console.error('Error:', error);
     }
   };
   
@@ -156,7 +266,7 @@ const AdminPanel = () => {
       }
       
       // Get student profile information for the activities
-      if (studentData) {
+      if (studentData && Array.isArray(studentData) && studentData.length > 0) {
         const studentIds = studentData.map(student => student.user_id);
         
         const { data: profileData, error: profileError } = await supabase
@@ -187,6 +297,8 @@ const AdminPanel = () => {
         }).filter(Boolean); // Remove any null values
         
         setRecentActivities(activities);
+      } else {
+        setRecentActivities([]);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -200,59 +312,118 @@ const AdminPanel = () => {
     }
   };
 
-  // Fetch companies and set up real-time subscription
-  useEffect(() => {
-    fetchCompanies();
-    fetchDashboardStats();
-    fetchRecentActivities();
-    
-    // Set up real-time subscription for companies table
-    const companiesSubscription = supabase
-      .channel('companies-changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'companies' }, 
-        () => {
-          console.log('Companies changed, fetching updated data');
-          fetchCompanies();
-          fetchDashboardStats();
-          fetchRecentActivities();
+  // Resume management functions
+  const handleViewResume = (student: StudentWithResume) => {
+    setSelectedStudent(student);
+    setIsResumeDialogOpen(true);
+  };
+  
+  const handleApproveResume = async () => {
+    if (selectedStudent) {
+      try {
+        // Update in Supabase - only update properties known to exist in the schema
+        const { error } = await supabase
+          .from('students')
+          .update({ resume_status: 'approved' })
+          .eq('user_id', selectedStudent.id);
+          
+        if (error) {
+          console.error('Error approving resume:', error);
+          toast({
+            title: "Error",
+            description: "Failed to approve resume. " + error.message,
+            variant: "destructive"
+          });
+          return;
         }
-      )
-      .subscribe();
-    
-    // Set up real-time subscription for profiles table
-    const profilesSubscription = supabase
-      .channel('profiles-changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'profiles' }, 
-        () => {
-          console.log('Profiles changed, fetching updated data');
-          fetchDashboardStats();
+        
+        // Update local state for immediate UI feedback
+        setSelectedStudent({ ...selectedStudent, resumeStatus: 'approved' });
+        setLocalStudents(localStudents.map(s => 
+          s.id === selectedStudent.id ? { ...s, resumeStatus: 'approved' } : s
+        ));
+        
+        toast({
+          title: "Resume Approved",
+          description: `${selectedStudent.name}'s resume has been approved.`,
+        });
+      } catch (error) {
+        console.error('Error:', error);
+        toast({
+          title: "Error",
+          description: "An unexpected error occurred",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+  
+  const handleRejectResume = async () => {
+    if (selectedStudent) {
+      try {
+        // Update in Supabase - only update properties known to exist in the schema
+        const { error } = await supabase
+          .from('students')
+          .update({ resume_status: 'rejected' })
+          .eq('user_id', selectedStudent.id);
+          
+        if (error) {
+          console.error('Error rejecting resume:', error);
+          toast({
+            title: "Error",
+            description: "Failed to request revision. " + error.message,
+            variant: "destructive"
+          });
+          return;
         }
-      )
-      .subscribe();
-      
-    // Set up real-time subscription for students table
-    const studentsSubscription = supabase
-      .channel('students-changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'students' }, 
-        () => {
-          console.log('Students changed, fetching updated data');
-          fetchDashboardStats();
-          fetchRecentActivities();
-        }
-      )
-      .subscribe();
-      
-    // Clean up subscription when component unmounts
-    return () => {
-      companiesSubscription.unsubscribe();
-      profilesSubscription.unsubscribe();
-      studentsSubscription.unsubscribe();
-    };
-  }, []);
+        
+        // Update local state for immediate UI feedback
+        setSelectedStudent({ ...selectedStudent, resumeStatus: 'rejected' });
+        setLocalStudents(localStudents.map(s => 
+          s.id === selectedStudent.id ? { ...s, resumeStatus: 'rejected' } : s
+        ));
+        
+        toast({
+          title: "Revision Requested",
+          description: `${selectedStudent.name} will be notified to update their resume.`,
+        });
+      } catch (error) {
+        console.error('Error:', error);
+        toast({
+          title: "Error",
+          description: "An unexpected error occurred",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+  
+  const handleUpdateNotes = async (notes: string) => {
+    if (selectedStudent) {
+      try {
+        // We don't try to update resume_notes in Supabase since it doesn't exist in the schema
+        // Only update the local state
+        setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
+        setLocalStudents(localStudents.map(s => 
+          s.id === selectedStudent.id ? { ...s, resumeNotes: notes } : s
+        ));
+        
+        toast({
+          title: "Notes Updated",
+          description: "Feedback notes have been saved locally.",
+        });
+      } catch (error) {
+        console.error('Error:', error);
+        toast({
+          title: "Error",
+          description: "An unexpected error occurred",
+          variant: "destructive"
+        });
+      }
+    }
+  };
 
+  // Company management functions
   const handleAddCompany = () => {
     setCurrentCompany(null);
     setIsCompanyFormOpen(true);
@@ -354,6 +525,61 @@ const AdminPanel = () => {
       });
     }
   };
+
+  // Fetch companies and set up real-time subscription
+  useEffect(() => {
+    fetchCompanies();
+    fetchStudents();
+    fetchDashboardStats();
+    fetchRecentActivities();
+    
+    // Set up real-time subscription for companies table
+    const companiesSubscription = supabase
+      .channel('companies-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'companies' }, 
+        () => {
+          console.log('Companies changed, fetching updated data');
+          fetchCompanies();
+          fetchDashboardStats();
+        }
+      )
+      .subscribe();
+    
+    // Set up real-time subscription for profiles table
+    const profilesSubscription = supabase
+      .channel('profiles-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'profiles' }, 
+        () => {
+          console.log('Profiles changed, fetching updated data');
+          fetchDashboardStats();
+          fetchStudents();
+        }
+      )
+      .subscribe();
+      
+    // Set up real-time subscription for students table
+    const studentsSubscription = supabase
+      .channel('students-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'students' }, 
+        () => {
+          console.log('Students changed, fetching updated data');
+          fetchDashboardStats();
+          fetchRecentActivities();
+          fetchStudents();
+        }
+      )
+      .subscribe();
+      
+    // Clean up subscription when component unmounts
+    return () => {
+      companiesSubscription.unsubscribe();
+      profilesSubscription.unsubscribe();
+      studentsSubscription.unsubscribe();
+    };
+  }, []);
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
@@ -509,68 +735,15 @@ const AdminPanel = () => {
             No companies found. Add some!
           </div>
         ) : (
-          <div className="space-y-4">
-            {companies.map((company) => (
-              <Card key={company.id} className="overflow-hidden">
-                <CardHeader className="bg-muted/50">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">{company.name}</CardTitle>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => handleEditCompany(company)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => handleDeleteCompany(company.id)}
-                      >
-                        <Trash className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </div>
-                  <CardDescription>{company.location}</CardDescription>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <div className="space-y-2">
-                    <div className="text-sm text-muted-foreground">
-                      <strong>Description:</strong> {company.description}
-                    </div>
-                    
-                    <div>
-                      <strong className="text-sm">Positions:</strong>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {company.positions && company.positions.map((position: string, index: number) => (
-                          <span 
-                            key={index}
-                            className="bg-primary/10 text-primary px-2 py-1 rounded-md text-xs"
-                          >
-                            {position}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <strong className="text-sm">Requirements:</strong>
-                      <ul className="list-disc list-inside space-y-1 mt-1 text-sm">
-                        {company.requirements && company.requirements.map((req: string, index: number) => (
-                          <li key={index}>{req}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    
-                    <div className="flex items-center justify-between text-sm pt-2 border-t mt-2">
-                      <span>
-                        <strong>Deadline:</strong> {formatDate(company.deadline)}
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {companies.map(company => (
+              <CompanyCard 
+                key={company.id}
+                company={company}
+                isEditable={true}
+                onEdit={() => handleEditCompany(company)}
+                onDelete={() => handleDeleteCompany(company.id)}
+              />
             ))}
           </div>
         )}
@@ -586,32 +759,123 @@ const AdminPanel = () => {
     </Card>
   );
 
+  // Render students tab
+  const renderStudents = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Student Resume Review</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-10">Loading students...</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Resume Status</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {localStudents.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                    No students found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                localStudents.map((student) => (
+                  <TableRow key={student.id}>
+                    <TableCell>{student.name}</TableCell>
+                    <TableCell>{student.user.email || 'N/A'}</TableCell>
+                    <TableCell>
+                      <div className={`px-2 py-1 rounded text-xs inline-block ${getStatusBadgeClass(student.resumeStatus)}`}>
+                        {student.resumeStatus === 'approved' && "Approved"}
+                        {student.resumeStatus === 'pending' && "Pending"}
+                        {student.resumeStatus === 'rejected' && "Needs Revision"}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {student.resumeUrl ? (
+                        <Button
+                          variant="link"
+                          className="text-blue-600 hover:text-blue-800 p-0 h-auto font-medium"
+                          onClick={() => handleViewResume(student)}
+                        >
+                          View Resume
+                        </Button>
+                      ) : (
+                        <span className="text-gray-400">No Resume</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+
   return (
-    <div className="container mx-auto py-8 space-y-6">
-      <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+    <div className="panel-container">
+      <NavBar title="Campus Recruitment - Admin Panel" />
       
-      <Tabs defaultValue="dashboard">
-        <TabsList className="grid w-full md:w-auto grid-cols-3">
-          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="companies">Companies</TabsTrigger>
-          <TabsTrigger value="users">User Management</TabsTrigger>
-        </TabsList>
+      <div className="container mx-auto py-8 space-y-6">
+        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
         
-        <div className="mt-6">
-          <TabsContent value="dashboard">
-            {renderDashboard()}
-          </TabsContent>
+        <Tabs defaultValue="dashboard">
+          <TabsList className="grid w-full md:w-auto grid-cols-4">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="companies">Companies</TabsTrigger>
+            <TabsTrigger value="students">Students</TabsTrigger>
+            <TabsTrigger value="users">User Management</TabsTrigger>
+          </TabsList>
           
-          <TabsContent value="companies">
-            {renderCompanies()}
-          </TabsContent>
-          
-          <TabsContent value="users" className="space-y-6">
-            <UserManagement userType="student" />
-            <UserManagement userType="staff" />
-          </TabsContent>
-        </div>
-      </Tabs>
+          <div className="mt-6">
+            <TabsContent value="dashboard">
+              {renderDashboard()}
+            </TabsContent>
+            
+            <TabsContent value="companies">
+              {renderCompanies()}
+            </TabsContent>
+
+            <TabsContent value="students">
+              {renderStudents()}
+            </TabsContent>
+            
+            <TabsContent value="users" className="space-y-6">
+              <UserManagement userType="student" />
+              <UserManagement userType="staff" />
+            </TabsContent>
+          </div>
+        </Tabs>
+
+        {/* Resume Dialog */}
+        <Dialog open={isResumeDialogOpen} onOpenChange={setIsResumeDialogOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Resume Review</DialogTitle>
+            </DialogHeader>
+            {selectedStudent && (
+              <ResumeViewer
+                studentName={selectedStudent.name}
+                resumeUrl={selectedStudent.resumeUrl || '/sample-resume.pdf'}
+                status={selectedStudent.resumeStatus}
+                notes={selectedStudent.resumeNotes}
+                isStaff={true}
+                onApprove={handleApproveResume}
+                onReject={handleRejectResume}
+                onUpdateNotes={handleUpdateNotes}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 };
