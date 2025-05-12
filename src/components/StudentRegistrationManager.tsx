@@ -25,16 +25,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
-import { Label } from "@/components/ui/label";
 import { supabase } from '../integrations/supabase/client';
+import { Label } from "@/components/ui/label";
 import { Edit, Trash, UserPlus, Search, X } from "lucide-react";
 
 interface User {
   id: string;
   name: string;
   role: string;
-  email?: string;
   registration_number?: string;
+  created_at?: string;
+  email?: string;
 }
 
 const StudentRegistrationManager: React.FC = () => {
@@ -43,21 +44,21 @@ const StudentRegistrationManager: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [currentStudent, setCurrentStudent] = useState<User | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    registration_number: '',
-    password: ''
+    password: '',
+    registration_number: ''
   });
 
   const fetchStudents = async () => {
     try {
       setIsLoading(true);
-      // Fetch all student profiles
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, role, email, registration_number')
+        .select('id, name, role, registration_number')
         .eq('role', 'student');
       
       if (error) {
@@ -71,11 +72,12 @@ const StudentRegistrationManager: React.FC = () => {
       }
       
       if (data) {
-        // Type assertion to ensure the data conforms to User[] type
-        setStudents(data as User[]);
-        setFilteredStudents(data as User[]);
+        // Safely type the data from Supabase
+        const safeData = Array.isArray(data) ? data as User[] : [];
+        setStudents(safeData);
+        setFilteredStudents(safeData);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
       toast({
         title: "Error",
@@ -122,33 +124,40 @@ const StudentRegistrationManager: React.FC = () => {
     
     const filtered = students.filter(student => 
       student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (student.registration_number && student.registration_number.includes(searchTerm))
+      (student.registration_number && 
+       student.registration_number.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     
     setFilteredStudents(filtered);
   }, [searchTerm, students]);
 
   const handleAddStudent = () => {
-    setSelectedStudent(null);
-    setFormData({ name: '', email: '', registration_number: '', password: '' });
+    setCurrentStudent(null);
+    setFormData({ name: '', email: '', password: '', registration_number: '' });
     setIsFormOpen(true);
   };
 
   const handleEditStudent = (student: User) => {
-    setSelectedStudent(student);
+    setCurrentStudent(student);
     setFormData({ 
       name: student.name,
       email: student.email || '',
-      registration_number: student.registration_number || '',
-      password: '' // We don't populate password on edit
+      password: '', // We don't populate password on edit
+      registration_number: student.registration_number || ''
     });
     setIsFormOpen(true);
   };
 
+  const handleDeleteStudent = (student: User) => {
+    setCurrentStudent(student);
+    setIsDeleteDialogOpen(true);
+  };
+
   const resetFormState = () => {
-    setSelectedStudent(null);
-    setFormData({ name: '', email: '', registration_number: '', password: '' });
+    setCurrentStudent(null);
+    setFormData({ name: '', email: '', password: '', registration_number: '' });
     setIsFormOpen(false);
+    setIsDeleteDialogOpen(false);
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -173,8 +182,8 @@ const StudentRegistrationManager: React.FC = () => {
       return;
     }
 
-    // Registration number validation
-    if (!formData.registration_number) {
+    // Check if registration number is provided
+    if (!formData.registration_number.trim()) {
       toast({
         title: "Error",
         description: "Registration number is required",
@@ -183,8 +192,8 @@ const StudentRegistrationManager: React.FC = () => {
       return;
     }
 
-    // Password validation when creating a new student
-    if (!selectedStudent && (!formData.password || formData.password.length < 6)) {
+    // Password validation when creating a new user
+    if (!currentStudent && (!formData.password || formData.password.length < 6)) {
       toast({
         title: "Error",
         description: "Password must be at least 6 characters",
@@ -194,18 +203,18 @@ const StudentRegistrationManager: React.FC = () => {
     }
     
     try {
-      // Check if registration number already exists (except for the current student being edited)
-      const { data: existingReg, error: regCheckError } = await supabase
+      // Check if registration number already exists
+      const { data: existingReg, error: regError } = await supabase
         .from('profiles')
         .select('id')
         .eq('registration_number', formData.registration_number)
-        .neq('id', selectedStudent?.id || '');
+        .not('id', 'eq', currentStudent?.id || '');
         
-      if (regCheckError) {
-        console.error('Error checking registration number:', regCheckError);
+      if (regError) {
+        console.error('Error checking registration number:', regError);
         toast({
           title: "Error",
-          description: `Failed to verify registration number. ${regCheckError.message}`,
+          description: `Error checking registration number. ${regError.message}`,
           variant: "destructive"
         });
         return;
@@ -221,16 +230,17 @@ const StudentRegistrationManager: React.FC = () => {
       }
       
       // If editing an existing student
-      if (selectedStudent) {
+      if (currentStudent) {
         // Update the profile
         const { error } = await supabase
           .from('profiles')
           .update({
             name: formData.name,
-            email: formData.email,
-            registration_number: formData.registration_number
+            registration_number: formData.registration_number,
+            // Only update email if it has changed and is provided
+            ...(formData.email && formData.email !== currentStudent.email ? { email: formData.email } : {})
           })
-          .eq('id', selectedStudent.id);
+          .eq('id', currentStudent.id);
           
         if (error) {
           console.error('Error updating student:', error);
@@ -244,19 +254,12 @@ const StudentRegistrationManager: React.FC = () => {
         
         // If password is provided, update it
         if (formData.password) {
-          const { error: authError } = await supabase.auth.admin.updateUserById(
-            selectedStudent.id,
-            { password: formData.password }
-          );
-          
-          if (authError) {
-            console.error('Error updating password:', authError);
-            toast({
-              title: "Warning",
-              description: `Student updated but password could not be changed. ${authError.message}`,
-              variant: "destructive"
-            });
-          }
+          // Call Supabase auth admin API to update password
+          // Note: This requires appropriate server-side handling 
+          toast({
+            title: "Warning",
+            description: "Password update requires server-side handling.",
+          });
         }
         
         toast({
@@ -282,7 +285,7 @@ const StudentRegistrationManager: React.FC = () => {
           console.error('Error creating auth user:', authError);
           toast({
             title: "Error",
-            description: `Failed to create student account. ${authError.message}`,
+            description: `Failed to create user account. ${authError.message}`,
             variant: "destructive"
           });
           return;
@@ -291,7 +294,7 @@ const StudentRegistrationManager: React.FC = () => {
         if (!authData.user || !authData.user.id) {
           toast({
             title: "Error",
-            description: "Failed to create student account. No user ID returned.",
+            description: "Failed to create user account. No user ID returned.",
             variant: "destructive"
           });
           return;
@@ -314,39 +317,39 @@ const StudentRegistrationManager: React.FC = () => {
           console.error('Error creating profile:', profileError);
           toast({
             title: "Error",
-            description: `Failed to create student profile. ${profileError.message}`,
+            description: `Failed to create user profile. ${profileError.message}`,
             variant: "destructive"
           });
           return;
         }
         
-        // Create student record
+        // Also create a student record if needed
         const { error: studentError } = await supabase
           .from('students')
           .insert({
             user_id: newUserId,
             resume_status: 'pending'
           });
-            
+          
         if (studentError) {
           console.error('Error creating student record:', studentError);
           toast({
             title: "Warning",
-            description: `Student created but student record could not be created. ${studentError.message}`,
+            description: `User created but student record could not be created. ${studentError.message}`,
             variant: "destructive"
           });
         }
         
         toast({
           title: "Student Created",
-          description: `${formData.name} has been added as a student with registration number ${formData.registration_number}.`,
+          description: `${formData.name} has been added as a student with login credentials.`,
         });
       }
       
       // Close the form and reset state
       resetFormState();
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
       toast({
         title: "Error",
@@ -356,13 +359,15 @@ const StudentRegistrationManager: React.FC = () => {
     }
   };
 
-  const handleDeleteStudent = async (student: User) => {
+  const confirmDeleteStudent = async () => {
+    if (!currentStudent) return;
+    
     try {
-      // First, delete from students table
+      // First delete from students table if it exists
       const { error: studentError } = await supabase
         .from('students')
         .delete()
-        .eq('user_id', student.id);
+        .eq('user_id', currentStudent.id);
         
       if (studentError) {
         console.error('Error deleting student record:', studentError);
@@ -378,13 +383,13 @@ const StudentRegistrationManager: React.FC = () => {
       const { error: profileError } = await supabase
         .from('profiles')
         .delete()
-        .eq('id', student.id);
+        .eq('id', currentStudent.id);
         
       if (profileError) {
         console.error('Error deleting profile:', profileError);
         toast({
           title: "Error",
-          description: `Failed to delete student profile. ${profileError.message}`,
+          description: `Failed to delete user profile. ${profileError.message}`,
           variant: "destructive"
         });
         return;
@@ -392,11 +397,14 @@ const StudentRegistrationManager: React.FC = () => {
       
       toast({
         title: "Student Deleted",
-        description: `${student.name} has been removed.`,
+        description: `${currentStudent.name} has been removed.`,
         variant: "destructive"
       });
       
-    } catch (error) {
+      // Close the dialog and reset state
+      resetFormState();
+      
+    } catch (error: any) {
       console.error('Error:', error);
       toast({
         title: "Error",
@@ -449,7 +457,6 @@ const StudentRegistrationManager: React.FC = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
                   <TableHead>Registration Number</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -458,7 +465,6 @@ const StudentRegistrationManager: React.FC = () => {
                 {filteredStudents.map((student) => (
                   <TableRow key={student.id}>
                     <TableCell>{student.name}</TableCell>
-                    <TableCell>{student.email || 'Not set'}</TableCell>
                     <TableCell>{student.registration_number || 'Not set'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -491,12 +497,12 @@ const StudentRegistrationManager: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedStudent ? `Edit Student` : `Add New Student`}
+              {currentStudent ? 'Edit Student' : 'Add New Student'}
             </DialogTitle>
             <DialogDescription>
-              {selectedStudent 
-                ? `Update student information and registration number`
-                : `Enter the details for the new student with registration number`}
+              {currentStudent 
+                ? 'Update student information'
+                : 'Enter the details for the new student with login credentials'}
             </DialogDescription>
           </DialogHeader>
           
@@ -509,6 +515,18 @@ const StudentRegistrationManager: React.FC = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   placeholder="Enter name"
+                  required
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="registration_number">Registration Number</Label>
+                <Input 
+                  id="registration_number"
+                  value={formData.registration_number}
+                  onChange={(e) => setFormData({...formData, registration_number: e.target.value})}
+                  placeholder="Enter unique registration number"
+                  required
                 />
               </div>
               
@@ -525,29 +543,18 @@ const StudentRegistrationManager: React.FC = () => {
               </div>
               
               <div>
-                <Label htmlFor="registration">Registration Number</Label>
-                <Input 
-                  id="registration"
-                  value={formData.registration_number}
-                  onChange={(e) => setFormData({...formData, registration_number: e.target.value})}
-                  placeholder="Enter registration number"
-                  required
-                />
-              </div>
-              
-              <div>
                 <Label htmlFor="password">
-                  {selectedStudent ? "Password (leave blank to keep current)" : "Password"}
+                  {currentStudent ? "Password (leave blank to keep current)" : "Password"}
                 </Label>
                 <Input 
                   id="password"
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  placeholder={selectedStudent ? "••••••••" : "Enter password"}
-                  required={!selectedStudent}
+                  placeholder={currentStudent ? "••••••••" : "Enter password"}
+                  required={!currentStudent}
                 />
-                {!selectedStudent && (
+                {!currentStudent && (
                   <p className="text-xs text-muted-foreground mt-1">
                     Password must be at least 6 characters
                   </p>
@@ -564,10 +571,39 @@ const StudentRegistrationManager: React.FC = () => {
                 Cancel
               </Button>
               <Button type="submit">
-                {selectedStudent ? 'Update' : 'Add'}
+                {currentStudent ? 'Update' : 'Add'}
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {currentStudent?.name}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <DialogFooter>
+            <Button 
+              type="button"
+              variant="outline"
+              onClick={resetFormState}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              variant="destructive" 
+              onClick={confirmDeleteStudent}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>

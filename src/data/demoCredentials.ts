@@ -29,7 +29,7 @@ export const getFormattedDemoCredentials = () => {
   return {
     admin: {
       ...demoCredentials.admin,
-      id: '00000000-0000-0000-0000-000000000001'
+      id: '1f69b62b-7ff7-4418-a595-ea94276e9c60'
     },
     staff: {
       ...demoCredentials.staff,
