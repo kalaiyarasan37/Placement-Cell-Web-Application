@@ -66,15 +66,17 @@ const StudentRegistrationManager: React.FC = () => {
       const hasRegistrationNumber = !checkError;
       
       // Get student profiles
-      let query = supabase
-        .from('profiles')
-        .select('id, name, role, email');
+      let query;
         
-      // Only include registration_number if the column exists
+      // Only include registration_number and email if the columns exist
       if (hasRegistrationNumber) {
         query = supabase
           .from('profiles')
-          .select('id, name, role, email, registration_number');
+          .select('id, name, role, registration_number');
+      } else {
+        query = supabase
+          .from('profiles')
+          .select('id, name, role');
       }
       
       // Filter to only get students
@@ -87,15 +89,18 @@ const StudentRegistrationManager: React.FC = () => {
           description: `Failed to fetch student list. ${error.message}`,
           variant: "destructive"
         });
+        // Set empty arrays to prevent TypeScript errors
+        setStudents([]);
+        setFilteredStudents([]);
         return;
       }
       
       if (data) {
         // Safely handle data by checking it's an array first
         if (Array.isArray(data)) {
-          // Use type assertion after validating the structure
-          setStudents(data as User[]);
-          setFilteredStudents(data as User[]);
+          const typedData: User[] = data;
+          setStudents(typedData);
+          setFilteredStudents(typedData);
         } else {
           console.error('Unexpected data format:', data);
           setStudents([]);
@@ -109,6 +114,9 @@ const StudentRegistrationManager: React.FC = () => {
         description: "An unexpected error occurred",
         variant: "destructive"
       });
+      // Set empty arrays in case of errors
+      setStudents([]);
+      setFilteredStudents([]);
     } finally {
       setIsLoading(false);
     }
@@ -234,10 +242,10 @@ const StudentRegistrationManager: React.FC = () => {
         .select('id')
         .eq('registration_number', formData.registration_number);
       
-      // Check for duplicate registration numbers more simply
+      // Check for duplicate registration numbers
       let isDuplicate = false;
       
-      if (!regError && Array.isArray(existingReg) && existingReg.length > 0) {
+      if (!regError && existingReg && Array.isArray(existingReg) && existingReg.length > 0) {
         if (currentStudent) {
           // For existing students, check if reg number belongs to another student
           isDuplicate = existingReg.some(reg => reg.id !== currentStudent.id);
