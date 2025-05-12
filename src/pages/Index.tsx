@@ -16,13 +16,13 @@ const Index: React.FC = () => {
   // Routing based on user role
   switch (userRole) {
     case 'admin':
-      // Admin has access to the most powerful panel
+      // Admin has complete control with full CRUD operations
       return <AdminPanel />;
     case 'staff':
       // Staff has a dedicated panel with limited privileges
       return <StaffPanel />;
     case 'student':
-      // Students can only access the student panel
+      // Students can only access the student panel with their assigned ID
       return <StudentPanel studentId={currentUser.id} />;
     default:
       return <Login />;
