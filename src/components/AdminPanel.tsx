@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   Tabs,
@@ -489,11 +490,18 @@ const AdminPanel = () => {
           
         if (error) {
           console.error('Error updating company:', error);
-          // Don't show error toast
+          toast({
+            title: "Error",
+            description: `Failed to update company: ${error.message}`,
+            variant: "destructive"
+          });
           return;
         }
         
-        // Silent success - no toast
+        toast({
+          title: "Success",
+          description: "Company updated successfully",
+        });
       } else {
         // Add new company
         console.log('Adding new company');
@@ -504,22 +512,32 @@ const AdminPanel = () => {
           positions: positions,
           requirements: requirements,
           deadline: companyData.deadline || new Date().toISOString().split('T')[0],
-          posted_by: companyData.posted_by || currentUser?.id || 'system'
+          posted_by: currentUser?.id || 'system'
         };
         
         console.log('New company data to insert:', newCompanyData);
         
-        const { error } = await supabase
+        const { error, data } = await supabase
           .from('companies')
-          .insert(newCompanyData);
+          .insert(newCompanyData)
+          .select();
           
         if (error) {
           console.error('Error adding company:', error);
-          // Don't show error toast
+          toast({
+            title: "Error",
+            description: `Failed to add company: ${error.message}`,
+            variant: "destructive"
+          });
           return;
         }
         
-        // Silent success - no toast
+        toast({
+          title: "Success",
+          description: "Company added successfully",
+        });
+        
+        console.log('New company created:', data);
       }
       
       setIsCompanyFormOpen(false);
@@ -527,7 +545,11 @@ const AdminPanel = () => {
       fetchCompanies();
     } catch (error) {
       console.error('Error saving company:', error);
-      // Don't show error toast
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
     }
   };
 
@@ -753,14 +775,6 @@ const AdminPanel = () => {
           </div>
         )}
       </CardContent>
-      
-      {/* Company Form Dialog */}
-      <CompanyForm 
-        isOpen={isCompanyFormOpen} 
-        onClose={() => setIsCompanyFormOpen(false)}
-        onSave={handleSaveCompany}
-        company={selectedCompany}
-      />
     </Card>
   );
 
