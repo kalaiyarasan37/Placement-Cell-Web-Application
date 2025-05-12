@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -92,7 +93,7 @@ const StudentRegistrationManager: React.FC = () => {
       if (data) {
         // Safely handle data by checking it's an array first
         if (Array.isArray(data)) {
-          // Type assertion after validating the data structure
+          // Use type assertion after validating the structure
           setStudents(data as User[]);
           setFilteredStudents(data as User[]);
         } else {
