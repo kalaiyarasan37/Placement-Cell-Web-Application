@@ -1,13 +1,5 @@
 
 export const demoCredentials = {
-  admin: {
-    email: 'admin@example.com',
-    password: 'admin123',
-    id: '1',
-    name: 'Admin User',
-    role: 'admin',
-    registration_number: 'ADMIN001'
-  },
   staff: {
     email: 'staff@example.com',
     password: 'staff123',
@@ -39,10 +31,6 @@ export const demoCredentials = {
 // This helps with compatibility when using demo data with real Supabase schema
 export const getFormattedDemoCredentials = () => {
   return {
-    admin: {
-      ...demoCredentials.admin,
-      id: '00000000-0000-0000-0000-000000000001'
-    },
     staff: {
       ...demoCredentials.staff,
       id: '00000000-0000-0000-0000-000000000002'
