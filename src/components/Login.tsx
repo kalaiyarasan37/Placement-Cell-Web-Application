@@ -39,6 +39,9 @@ const Login: React.FC = () => {
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     if (value === "admin") {
+      setEmail('achu73220@gmail.com');
+      setPassword('12345678');
+    } else if (value === "demoAdmin") {
       setEmail('admin@example.com');
       setPassword('admin123');
     } else if (value === "staff") {
@@ -69,8 +72,9 @@ const Login: React.FC = () => {
           )}
           
           <Tabs defaultValue="admin" value={activeTab} onValueChange={handleTabChange} className="mb-4">
-            <TabsList className="grid grid-cols-3 w-full">
-              <TabsTrigger value="admin">Admin</TabsTrigger>
+            <TabsList className="grid grid-cols-4 w-full">
+              <TabsTrigger value="admin">Real Admin</TabsTrigger>
+              <TabsTrigger value="demoAdmin">Demo Admin</TabsTrigger>
               <TabsTrigger value="staff">Staff</TabsTrigger>
               <TabsTrigger value="student">Student</TabsTrigger>
             </TabsList>
@@ -111,7 +115,8 @@ const Login: React.FC = () => {
         
         <CardFooter className="flex flex-col">
           <p className="text-sm text-muted-foreground text-center w-full">
-            {activeTab === "admin" && "Demo credentials: admin@example.com / admin123"}
+            {activeTab === "admin" && "Real admin credentials: achu73220@gmail.com / 12345678"}
+            {activeTab === "demoAdmin" && "Demo credentials: admin@example.com / admin123"}
             {activeTab === "staff" && "Demo credentials: staff@example.com / staff123"}
             {activeTab === "student" && "Demo credentials: student@example.com / student123"}
           </p>

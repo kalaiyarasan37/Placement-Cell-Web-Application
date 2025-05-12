@@ -23,6 +23,15 @@ export const demoCredentials = {
     name: 'Student User',
     role: 'student',
     registration_number: 'STU001'
+  },
+  // Add the real admin user
+  realAdmin: {
+    email: 'achu73220@gmail.com',
+    password: '12345678',
+    id: '4',
+    name: 'Real Admin User',
+    role: 'admin',
+    registration_number: 'ADMIN002'
   }
 };
 
@@ -41,6 +50,10 @@ export const getFormattedDemoCredentials = () => {
     student: {
       ...demoCredentials.student,
       id: '00000000-0000-0000-0000-000000000003'
+    },
+    realAdmin: {
+      ...demoCredentials.realAdmin,
+      id: '00000000-0000-0000-0000-000000000004'
     }
   };
 };

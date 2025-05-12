@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../integrations/supabase/client';
@@ -111,7 +112,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         toast({
           title: "Login successful",
-          description: `Logged in as ${demoUser.role} using demo account.`,
+          description: `Logged in as ${demoUser.role} using ${email === 'achu73220@gmail.com' ? 'real admin' : 'demo'} account.`,
         });
         return true;
       }
@@ -155,7 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserRole(null);
         toast({
           title: "Logged out",
-          description: "You have been successfully logged out from demo account.",
+          description: "You have been successfully logged out from account.",
         });
         return;
       }
