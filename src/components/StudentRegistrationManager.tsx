@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -91,9 +90,16 @@ const StudentRegistrationManager: React.FC = () => {
       }
       
       if (data) {
-        // Safely cast the data
-        setStudents(data as User[]);
-        setFilteredStudents(data as User[]);
+        // Safely handle data by checking it's an array first
+        if (Array.isArray(data)) {
+          // Type assertion after validating the data structure
+          setStudents(data as User[]);
+          setFilteredStudents(data as User[]);
+        } else {
+          console.error('Unexpected data format:', data);
+          setStudents([]);
+          setFilteredStudents([]);
+        }
       }
     } catch (error: any) {
       console.error('Error:', error);
@@ -227,14 +233,15 @@ const StudentRegistrationManager: React.FC = () => {
         .select('id')
         .eq('registration_number', formData.registration_number);
       
-      // Only check for duplicates if the ID is different (editing) or adding new
+      // Check for duplicate registration numbers more simply
       let isDuplicate = false;
-      if (!regError && existingReg && existingReg.length > 0) {
-        // If we're editing and the reg number belongs to a different user
+      
+      if (!regError && Array.isArray(existingReg) && existingReg.length > 0) {
         if (currentStudent) {
+          // For existing students, check if reg number belongs to another student
           isDuplicate = existingReg.some(reg => reg.id !== currentStudent.id);
         } else {
-          // For new users, any existing reg is a duplicate
+          // For new students, any match is a duplicate
           isDuplicate = true;
         }
       }
