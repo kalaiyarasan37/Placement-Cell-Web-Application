@@ -56,10 +56,29 @@ const StudentRegistrationManager: React.FC = () => {
   const fetchStudents = async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
+      
+      // Check if our migration has run and registration_number column exists
+      const { error: checkError } = await supabase
         .from('profiles')
-        .select('id, name, role, registration_number')
-        .eq('role', 'student');
+        .select('registration_number')
+        .limit(1);
+        
+      const hasRegistrationNumber = !checkError;
+      
+      // Get student profiles
+      let query = supabase
+        .from('profiles')
+        .select('id, name, role, email');
+        
+      // Only include registration_number if the column exists
+      if (hasRegistrationNumber) {
+        query = supabase
+          .from('profiles')
+          .select('id, name, role, email, registration_number');
+      }
+      
+      // Filter to only get students
+      const { data, error } = await query.eq('role', 'student');
       
       if (error) {
         console.error('Error fetching students:', error);
@@ -72,10 +91,9 @@ const StudentRegistrationManager: React.FC = () => {
       }
       
       if (data) {
-        // Safely type the data from Supabase
-        const safeData = Array.isArray(data) ? data as User[] : [];
-        setStudents(safeData);
-        setFilteredStudents(safeData);
+        // Safely cast the data
+        setStudents(data as User[]);
+        setFilteredStudents(data as User[]);
       }
     } catch (error: any) {
       console.error('Error:', error);
@@ -207,20 +225,21 @@ const StudentRegistrationManager: React.FC = () => {
       const { data: existingReg, error: regError } = await supabase
         .from('profiles')
         .select('id')
-        .eq('registration_number', formData.registration_number)
-        .not('id', 'eq', currentStudent?.id || '');
-        
-      if (regError) {
-        console.error('Error checking registration number:', regError);
-        toast({
-          title: "Error",
-          description: `Error checking registration number. ${regError.message}`,
-          variant: "destructive"
-        });
-        return;
-      }
+        .eq('registration_number', formData.registration_number);
       
-      if (existingReg && existingReg.length > 0) {
+      // Only check for duplicates if the ID is different (editing) or adding new
+      let isDuplicate = false;
+      if (!regError && existingReg && existingReg.length > 0) {
+        // If we're editing and the reg number belongs to a different user
+        if (currentStudent) {
+          isDuplicate = existingReg.some(reg => reg.id !== currentStudent.id);
+        } else {
+          // For new users, any existing reg is a duplicate
+          isDuplicate = true;
+        }
+      }
+        
+      if (isDuplicate) {
         toast({
           title: "Error",
           description: "Registration number already exists",
