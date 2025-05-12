@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import UserManagement from './UserManagement';
@@ -228,6 +227,7 @@ const AdminPanel: React.FC = () => {
   // Function to fetch companies from Supabase
   const fetchCompanies = async () => {
     try {
+      setIsLoading(true);
       const { data, error } = await supabase
         .from('companies')
         .select('*');
@@ -561,15 +561,21 @@ const AdminPanel: React.FC = () => {
               <div className="text-center py-10">Loading companies...</div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {localCompanies.map(company => (
-                  <CompanyCard 
-                    key={company.id}
-                    company={company}
-                    isEditable={true}
-                    onEdit={() => handleEditCompany(company)}
-                    onDelete={() => handleDeleteCompany(company.id)}
-                  />
-                ))}
+                {localCompanies.length === 0 ? (
+                  <div className="col-span-2 text-center py-10 text-muted-foreground">
+                    No companies found. Add your first company listing.
+                  </div>
+                ) : (
+                  localCompanies.map(company => (
+                    <CompanyCard 
+                      key={company.id}
+                      company={company}
+                      isEditable={true}
+                      onEdit={() => handleEditCompany(company)}
+                      onDelete={() => handleDeleteCompany(company.id)}
+                    />
+                  ))
+                )}
               </div>
             )}
           </TabsContent>
