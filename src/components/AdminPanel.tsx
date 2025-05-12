@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Tabs,
@@ -49,9 +48,21 @@ interface StudentWithResume {
   };
 }
 
+// Define Company interface matching the one in StaffPanel
+interface Company {
+  id: string;
+  name: string;
+  description: string;
+  location: string;
+  positions: string[];
+  requirements: string[];
+  deadline: string;
+  posted_by?: string;
+}
+
 const AdminPanel = () => {
   const { currentUser } = useAuth();
-  const [companies, setCompanies] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [dashboardStats, setDashboardStats] = useState({
     totalCompanies: 0,
     totalStudents: 0,
@@ -63,8 +74,7 @@ const AdminPanel = () => {
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCompanyFormOpen, setIsCompanyFormOpen] = useState(false);
-  const [currentCompany, setCurrentCompany] = useState<any>(null);
-  const [selectedCompany, setSelectedCompany] = useState<any>(undefined);
+  const [selectedCompany, setSelectedCompany] = useState<Company | undefined>(undefined);
   
   // Student management states
   const [localStudents, setLocalStudents] = useState<StudentWithResume[]>([]);
@@ -74,31 +84,41 @@ const AdminPanel = () => {
   // Fetch companies from Supabase
   const fetchCompanies = async () => {
     try {
+      setIsLoading(true);
+      console.log('Fetching companies from Supabase');
+      
       const { data, error } = await supabase
         .from('companies')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*');
         
       if (error) {
         console.error('Error fetching companies:', error);
-        toast({
-          title: "Error",
-          description: `Failed to load companies: ${error.message}`,
-          variant: "destructive",
-        });
+        // No error toast, just log to console
+        setIsLoading(false);
         return;
       }
       
-      if (data) {
-        setCompanies(data);
+      console.log('Companies data from DB:', data);
+      
+      if (data && data.length > 0) {
+        // Ensure data types are correct before setting state
+        const processedData = data.map(company => ({
+          ...company,
+          // Ensure positions and requirements are arrays
+          positions: Array.isArray(company.positions) ? company.positions : [],
+          requirements: Array.isArray(company.requirements) ? company.requirements : []
+        }));
+        
+        console.log('Processed companies data:', processedData);
+        setCompanies(processedData as Company[]);
+      } else {
+        console.log('No companies found');
+        setCompanies([]);
       }
+      setIsLoading(false);
     } catch (error) {
-      console.error('Error:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred while fetching companies",
-        variant: "destructive",
-      });
+      console.error('Error fetching companies:', error);
+      setIsLoading(false);
     }
   };
 
@@ -425,104 +445,100 @@ const AdminPanel = () => {
 
   // Company management functions
   const handleAddCompany = () => {
-    setCurrentCompany(null);
+    setSelectedCompany(undefined);
     setIsCompanyFormOpen(true);
   };
 
-  const handleEditCompany = (company: any) => {
-    setCurrentCompany(company);
+  const handleEditCompany = (company: Company) => {
+    console.log('Editing company:', company);
+    setSelectedCompany(company);
     setIsCompanyFormOpen(true);
   };
 
-  const handleDeleteCompany = async (id: string) => {
+  const handleDeleteCompany = async (companyId: string) => {
     try {
+      // Delete from Supabase
       const { error } = await supabase
         .from('companies')
         .delete()
-        .eq('id', id);
+        .eq('id', companyId);
         
       if (error) {
         console.error('Error deleting company:', error);
-        toast({
-          title: "Error",
-          description: `Failed to delete company: ${error.message}`,
-          variant: "destructive",
-        });
+        // Don't show error toast
         return;
       }
       
-      toast({
-        title: "Company Deleted",
-        description: "The company has been removed successfully.",
-      });
-      
-      // The real-time subscription will handle updating the list
+      // The real-time subscription will update the UI
     } catch (error) {
       console.error('Error:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred while deleting the company",
-        variant: "destructive",
-      });
     }
   };
 
-  const handleSaveCompany = async (companyData: any) => {
+  const handleSaveCompany = async (companyData: Partial<Company>) => {
     try {
-      if (currentCompany) {
+      console.log('Saving company data:', companyData);
+      
+      // Ensure positions and requirements are always arrays
+      const positions = Array.isArray(companyData.positions) ? companyData.positions : [];
+      const requirements = Array.isArray(companyData.requirements) ? companyData.requirements : [];
+      
+      if (selectedCompany) {
         // Update existing company
+        console.log('Updating existing company:', selectedCompany.id);
         const { error } = await supabase
           .from('companies')
-          .update(companyData)
-          .eq('id', currentCompany.id);
+          .update({
+            name: companyData.name,
+            description: companyData.description,
+            location: companyData.location,
+            positions: positions,
+            requirements: requirements,
+            deadline: companyData.deadline || new Date().toISOString().split('T')[0]
+          })
+          .eq('id', selectedCompany.id);
           
         if (error) {
           console.error('Error updating company:', error);
-          toast({
-            title: "Error",
-            description: `Failed to update company: ${error.message}`,
-            variant: "destructive",
-          });
+          // Don't show error toast
           return;
         }
         
-        toast({
-          title: "Company Updated",
-          description: "The company information has been updated successfully.",
-        });
+        // Silent success - no toast
       } else {
-        // Create new company
+        // Add new company
+        console.log('Adding new company');
+        const newCompanyData = {
+          name: companyData.name || '',
+          description: companyData.description || '',
+          location: companyData.location || '',
+          positions: positions,
+          requirements: requirements,
+          deadline: companyData.deadline || new Date().toISOString().split('T')[0],
+          posted_by: companyData.posted_by || currentUser?.id || 'system'
+        };
+        
+        console.log('New company data to insert:', newCompanyData);
+        
         const { error } = await supabase
           .from('companies')
-          .insert([companyData]);
+          .insert(newCompanyData);
           
         if (error) {
           console.error('Error adding company:', error);
-          toast({
-            title: "Error",
-            description: `Failed to add company: ${error.message}`,
-            variant: "destructive",
-          });
+          // Don't show error toast
           return;
         }
         
-        toast({
-          title: "Company Added",
-          description: "The company has been added successfully.",
-        });
+        // Silent success - no toast
       }
       
-      // Close the form
       setIsCompanyFormOpen(false);
-      
-      // The real-time subscription will handle updating the list
+      // Force immediate refresh instead of waiting for subscription
+      fetchCompanies();
     } catch (error) {
-      console.error('Error:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive",
-      });
+      console.error('Error saving company:', error);
+      // Don't show error toast
     }
   };
 
@@ -749,12 +765,12 @@ const AdminPanel = () => {
         )}
       </CardContent>
       
-      {/* Company Form Modal */}
+      {/* Company Form Dialog */}
       <CompanyForm 
         isOpen={isCompanyFormOpen} 
         onClose={() => setIsCompanyFormOpen(false)}
         onSave={handleSaveCompany}
-        company={currentCompany}
+        company={selectedCompany}
       />
     </Card>
   );
@@ -875,6 +891,14 @@ const AdminPanel = () => {
             )}
           </DialogContent>
         </Dialog>
+        
+        {/* Company Form Dialog */}
+        <CompanyForm 
+          isOpen={isCompanyFormOpen} 
+          onClose={() => setIsCompanyFormOpen(false)}
+          onSave={handleSaveCompany}
+          company={selectedCompany}
+        />
       </div>
     </div>
   );
