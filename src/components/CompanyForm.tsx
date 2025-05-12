@@ -15,6 +15,7 @@ import {
 import { toast } from '@/components/ui/use-toast';
 import { Company } from '../data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
 
 interface CompanyFormProps {
   isOpen: boolean;
@@ -45,7 +46,15 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
   // Update form data when company prop changes
   useEffect(() => {
     if (company) {
-      setFormData(company);
+      // Ensure positions and requirements are arrays
+      const positions = Array.isArray(company.positions) ? company.positions : [];
+      const requirements = Array.isArray(company.requirements) ? company.requirements : [];
+      
+      setFormData({
+        ...company,
+        positions,
+        requirements
+      });
     } else {
       setFormData({
         name: '',
@@ -69,32 +78,22 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
   };
 
   const handleAddPosition = () => {
-    if (newPosition.trim() && formData.positions) {
+    if (newPosition.trim()) {
+      const currentPositions = Array.isArray(formData.positions) ? formData.positions : [];
       setFormData({
         ...formData,
-        positions: [...formData.positions, newPosition.trim()]
-      });
-      setNewPosition('');
-    } else if (newPosition.trim()) {
-      setFormData({
-        ...formData,
-        positions: [newPosition.trim()]
+        positions: [...currentPositions, newPosition.trim()]
       });
       setNewPosition('');
     }
   };
 
   const handleAddRequirement = () => {
-    if (newRequirement.trim() && formData.requirements) {
+    if (newRequirement.trim()) {
+      const currentRequirements = Array.isArray(formData.requirements) ? formData.requirements : [];
       setFormData({
         ...formData,
-        requirements: [...formData.requirements, newRequirement.trim()]
-      });
-      setNewRequirement('');
-    } else if (newRequirement.trim()) {
-      setFormData({
-        ...formData,
-        requirements: [newRequirement.trim()]
+        requirements: [...currentRequirements, newRequirement.trim()]
       });
       setNewRequirement('');
     }
@@ -119,51 +118,37 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
   const handleSubmit = () => {
     // Basic validation
     if (!formData.name || !formData.description || !formData.location || !formData.deadline) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      });
+      console.log("Missing required fields", formData);
+      // Silently handle validation without showing error toasts
       return;
     }
 
-    if (!formData.positions || formData.positions.length === 0) {
-      toast({
-        title: "No Positions",
-        description: "Please add at least one position.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Ensure positions and requirements are arrays and not empty
+    const positions = Array.isArray(formData.positions) ? formData.positions : [];
+    const requirements = Array.isArray(formData.requirements) ? formData.requirements : [];
     
-    if (!formData.requirements || formData.requirements.length === 0) {
-      toast({
-        title: "No Requirements",
-        description: "Please add at least one requirement.",
-        variant: "destructive",
-      });
+    if (positions.length === 0 || requirements.length === 0) {
+      console.log("Positions or requirements are empty");
+      // Silently handle validation without showing error toasts
       return;
     }
 
     setIsSubmitting(true);
     
     try {
-      // Ensure positions and requirements are arrays
+      // Prepare data with arrays
       const finalData = {
         ...formData,
-        positions: Array.isArray(formData.positions) ? formData.positions : [],
-        requirements: Array.isArray(formData.requirements) ? formData.requirements : []
+        positions,
+        requirements,
+        // Set a default poster ID if none is provided
+        posted_by: formData.posted_by || currentUser?.id || 'system'
       };
       
       // Pass the data back to parent component
       onSave(finalData);
     } catch (error) {
       console.error('Error submitting form:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
       setIsSubmitting(false);
     }
   };

@@ -46,7 +46,7 @@ const CompanyCard: React.FC<CompanyCardProps> = ({
           </div>
           {isEditable && (
             <div className="text-xs text-muted-foreground">
-              Posted by: {company.posted_by}
+              Posted by: {company.posted_by || 'Admin'}
             </div>
           )}
         </div>

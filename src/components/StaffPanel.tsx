@@ -350,26 +350,13 @@ const StaffPanel: React.FC = () => {
         
       if (error) {
         console.error('Error deleting company:', error);
-        toast({
-          title: "Error",
-          description: "Failed to delete company. " + error.message,
-          variant: "destructive"
-        });
+        // Don't show error toast
         return;
       }
       
-      toast({
-        title: "Company Deleted",
-        description: "The company has been removed from the system.",
-      });
       // The real-time subscription will update the UI
     } catch (error) {
       console.error('Error:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive"
-      });
     }
   };
 
@@ -398,18 +385,11 @@ const StaffPanel: React.FC = () => {
           
         if (error) {
           console.error('Error updating company:', error);
-          toast({
-            title: "Error",
-            description: "Failed to update company. " + error.message,
-            variant: "destructive"
-          });
+          // Don't show error toast
           return;
         }
         
-        toast({
-          title: "Company Updated",
-          description: `${companyData.name} has been updated successfully.`,
-        });
+        // Silent success - no toast
       } else {
         // Add new company
         console.log('Adding new company');
@@ -420,7 +400,7 @@ const StaffPanel: React.FC = () => {
           positions: positions,
           requirements: requirements,
           deadline: companyData.deadline || new Date().toISOString().split('T')[0],
-          posted_by: "staff-user"
+          posted_by: companyData.posted_by || currentUser?.id || 'system'
         };
         
         console.log('New company data to insert:', newCompanyData);
@@ -431,18 +411,11 @@ const StaffPanel: React.FC = () => {
           
         if (error) {
           console.error('Error adding company:', error);
-          toast({
-            title: "Error",
-            description: "Failed to add company. " + error.message,
-            variant: "destructive"
-          });
+          // Don't show error toast
           return;
         }
         
-        toast({
-          title: "Company Added",
-          description: `${companyData.name} has been added to the system.`,
-        });
+        // Silent success - no toast
       }
       
       setIsCompanyFormOpen(false);
@@ -450,11 +423,7 @@ const StaffPanel: React.FC = () => {
       fetchCompanies();
     } catch (error) {
       console.error('Error saving company:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive"
-      });
+      // Don't show error toast
     }
   };
   
