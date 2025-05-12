@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import NavBar from './NavBar';
 import UserManagement from './UserManagement';
@@ -146,8 +147,6 @@ const AdminPanel: React.FC = () => {
 
   // Function to fetch recent activities
   const fetchRecentActivities = async () => {
-    // In a real app, you would fetch activities from a dedicated table
-    // Here we'll simulate this by checking recent changes in companies and students tables
     try {
       // Get recent companies (limit to latest 5)
       const { data: recentCompanies, error: companiesError } = await supabase
@@ -160,25 +159,16 @@ const AdminPanel: React.FC = () => {
         console.error('Error fetching recent companies:', companiesError);
       }
 
-      // Get recent resume status changes (would require a dedicated activities table in a real app)
-      // For now, we'll use mock data combined with any real companies we found
-      
-      const mockActivities: Activity[] = [
-        {
-          id: '1',
-          type: 'resume_approved',
-          description: 'Resume was approved',
-          timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-          userName: 'Jane Smith'
-        },
-        {
-          id: '2',
-          type: 'resume_rejected',
-          description: 'Resume was rejected',
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          userName: 'John Doe'
-        }
-      ];
+      // Get recent resume status changes
+      const { data: recentResumeChanges, error: resumeError } = await supabase
+        .from('students')
+        .select('id, user_id, resume_status, updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(5);
+
+      if (resumeError) {
+        console.error('Error fetching resume changes:', resumeError);
+      }
       
       // Convert companies to activities format
       const companyActivities: Activity[] = recentCompanies ? recentCompanies.map(company => ({
@@ -189,8 +179,17 @@ const AdminPanel: React.FC = () => {
         userName: company.posted_by || 'Unknown'
       })) : [];
       
+      // Convert resume changes to activities
+      const resumeActivities: Activity[] = recentResumeChanges ? recentResumeChanges.map(change => ({
+        id: `resume-${change.id}`,
+        type: change.resume_status === 'approved' ? 'resume_approved' as const : 'resume_rejected' as const,
+        description: `Resume was ${change.resume_status}`,
+        timestamp: change.updated_at,
+        userName: change.user_id || 'Unknown'
+      })) : [];
+      
       // Combine and sort by timestamp
-      const combinedActivities = [...companyActivities, ...mockActivities]
+      const combinedActivities = [...companyActivities, ...resumeActivities]
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, 5); // Take only the 5 most recent
         
@@ -241,7 +240,18 @@ const AdminPanel: React.FC = () => {
       
       if (data && data.length > 0) {
         // Cast Supabase data to our Company interface
-        setLocalCompanies(data as unknown as Company[]);
+        const typedData = data.map(item => ({
+          id: item.id,
+          name: item.name || '',
+          description: item.description || '',
+          location: item.location || '',
+          positions: Array.isArray(item.positions) ? item.positions : [],
+          requirements: Array.isArray(item.requirements) ? item.requirements : [],
+          deadline: item.deadline || new Date().toISOString().split('T')[0],
+          posted_by: item.posted_by || 'Unknown'
+        })) as Company[];
+        
+        setLocalCompanies(typedData);
       } else {
         // If no companies found in DB, use mock data
         setLocalCompanies(mockCompanies);
@@ -335,13 +345,15 @@ const AdminPanel: React.FC = () => {
         return;
       }
       
-      // Local state update will happen through the subscription
+      // Update local state immediately for better UX
+      setLocalCompanies(prevCompanies => prevCompanies.filter(company => company.id !== companyId));
+      
       toast({
         title: "Company Deleted",
         description: "The company has been successfully removed.",
         variant: "destructive"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
       toast({
         title: "Error",
@@ -355,7 +367,7 @@ const AdminPanel: React.FC = () => {
     try {
       if (selectedCompany) {
         // Update existing company
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('companies')
           .update({
             name: companyData.name,
@@ -365,7 +377,8 @@ const AdminPanel: React.FC = () => {
             requirements: companyData.requirements,
             deadline: companyData.deadline || new Date().toISOString().split('T')[0]
           })
-          .eq('id', selectedCompany.id);
+          .eq('id', selectedCompany.id)
+          .select();
           
         if (error) {
           console.error('Error updating company:', error);
@@ -375,6 +388,17 @@ const AdminPanel: React.FC = () => {
             variant: "destructive"
           });
           return;
+        }
+        
+        // Update local state immediately
+        if (data && data[0]) {
+          setLocalCompanies(prevCompanies => 
+            prevCompanies.map(company => 
+              company.id === selectedCompany.id 
+                ? { ...company, ...data[0] } as Company
+                : company
+            )
+          );
         }
         
         toast({
@@ -408,6 +432,11 @@ const AdminPanel: React.FC = () => {
           return;
         }
         
+        // Add new company to local state immediately
+        if (data && data[0]) {
+          setLocalCompanies(prevCompanies => [...prevCompanies, data[0] as unknown as Company]);
+        }
+        
         toast({
           title: "Company Added",
           description: `${companyData.name} has been added successfully.`,
@@ -416,9 +445,8 @@ const AdminPanel: React.FC = () => {
       
       // Close the form
       setIsCompanyFormOpen(false);
-      // Update will happen through the subscription
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
       toast({
         title: "Error",

@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from '@/components/ui/use-toast';
 import { Company } from '../data/mockData';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface CompanyFormProps {
@@ -76,6 +75,12 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
         positions: [...formData.positions, newPosition.trim()]
       });
       setNewPosition('');
+    } else if (newPosition.trim()) {
+      setFormData({
+        ...formData,
+        positions: [newPosition.trim()]
+      });
+      setNewPosition('');
     }
   };
 
@@ -84,6 +89,12 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       setFormData({
         ...formData,
         requirements: [...formData.requirements, newRequirement.trim()]
+      });
+      setNewRequirement('');
+    } else if (newRequirement.trim()) {
+      setFormData({
+        ...formData,
+        requirements: [newRequirement.trim()]
       });
       setNewRequirement('');
     }
@@ -105,62 +116,6 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
     }
   };
 
-  const saveToDatabase = async () => {
-    try {
-      setIsSubmitting(true);
-      
-      // Format the data for Supabase
-      // Ensure all required fields are present
-      const companyData = {
-        name: formData.name || '',
-        description: formData.description || '',
-        location: formData.location || '',
-        positions: formData.positions || [],
-        requirements: formData.requirements || [],
-        deadline: formData.deadline || new Date().toISOString().split('T')[0],
-        posted_by: currentUser?.id || ''
-      };
-      
-      let result;
-      
-      if (company?.id) {
-        // Update existing company
-        result = await supabase
-          .from('companies')
-          .update(companyData)
-          .eq('id', company.id);
-      } else {
-        // Insert new company
-        result = await supabase
-          .from('companies')
-          .insert(companyData)
-          .select();
-      }
-      
-      if (result.error) {
-        throw result.error;
-      }
-      
-      // Call the onSave prop with the data
-      onSave(companyData);
-      
-      toast({
-        title: company ? "Company Updated" : "Company Added",
-        description: `${formData.name} has been ${company ? "updated" : "added"} successfully.`,
-      });
-    } catch (error) {
-      console.error('Error saving company:', error);
-      toast({
-        title: "Error",
-        description: `Failed to ${company ? "update" : "add"} company: ${error.message}`,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-      onClose();
-    }
-  };
-
   const handleSubmit = () => {
     // Basic validation
     if (!formData.name || !formData.description || !formData.location || !formData.deadline) {
@@ -172,7 +127,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       return;
     }
 
-    if (formData.positions?.length === 0) {
+    if (!formData.positions || formData.positions.length === 0) {
       toast({
         title: "No Positions",
         description: "Please add at least one position.",
@@ -181,7 +136,48 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       return;
     }
     
-    saveToDatabase();
+    if (!formData.requirements || formData.requirements.length === 0) {
+      toast({
+        title: "No Requirements",
+        description: "Please add at least one requirement.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    try {
+      // Pass the data back to parent component
+      onSave({
+        ...formData,
+        positions: formData.positions || [],
+        requirements: formData.requirements || []
+      });
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle Enter key in position and requirement inputs
+  const handlePositionKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddPosition();
+    }
+  };
+
+  const handleRequirementKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddRequirement();
+    }
   };
 
   return (
@@ -196,42 +192,46 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
         
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label htmlFor="name">Company Name</Label>
+            <Label htmlFor="name">Company Name *</Label>
             <Input 
               id="name" 
               name="name" 
-              value={formData.name} 
-              onChange={handleInputChange} 
+              value={formData.name || ''} 
+              onChange={handleInputChange}
+              required
             />
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
+            <Label htmlFor="location">Location *</Label>
             <Input 
               id="location" 
               name="location" 
-              value={formData.location} 
-              onChange={handleInputChange} 
+              value={formData.location || ''} 
+              onChange={handleInputChange}
+              required 
             />
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">Description *</Label>
             <Textarea 
               id="description" 
               name="description" 
-              value={formData.description} 
+              value={formData.description || ''} 
               onChange={handleInputChange} 
               rows={3}
+              required
             />
           </div>
           
           <div className="space-y-2">
-            <Label>Positions</Label>
+            <Label>Positions *</Label>
             <div className="flex gap-2">
               <Input 
                 value={newPosition} 
                 onChange={(e) => setNewPosition(e.target.value)}
+                onKeyDown={handlePositionKeyDown}
                 placeholder="Add a position"
               />
               <Button type="button" onClick={handleAddPosition} className="shrink-0">
@@ -254,11 +254,12 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           </div>
           
           <div className="space-y-2">
-            <Label>Requirements</Label>
+            <Label>Requirements *</Label>
             <div className="flex gap-2">
               <Input 
                 value={newRequirement} 
                 onChange={(e) => setNewRequirement(e.target.value)}
+                onKeyDown={handleRequirementKeyDown}
                 placeholder="Add a requirement"
               />
               <Button type="button" onClick={handleAddRequirement} className="shrink-0">
@@ -281,13 +282,14 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="deadline">Application Deadline</Label>
+            <Label htmlFor="deadline">Application Deadline *</Label>
             <Input 
               id="deadline" 
               name="deadline" 
               type="date"
-              value={formData.deadline} 
-              onChange={handleInputChange} 
+              value={formData.deadline || ''} 
+              onChange={handleInputChange}
+              required 
             />
           </div>
         </div>

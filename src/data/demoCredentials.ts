@@ -24,7 +24,7 @@ export const demoCredentials = {
     role: 'student',
     registration_number: 'STU001'
   },
-  // Add the real admin user
+  // Real admin user
   realAdmin: {
     email: 'achu73220@gmail.com',
     password: '12345678',
