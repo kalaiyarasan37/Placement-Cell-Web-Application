@@ -37,6 +37,17 @@ const ResumeViewer: React.FC<ResumeViewerProps> = ({
     }
   };
 
+  const handleDownload = () => {
+    if (resumeUrl) {
+      const link = document.createElement('a');
+      link.href = resumeUrl;
+      link.download = resumeUrl.split('/').pop() || 'resume.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -49,12 +60,20 @@ const ResumeViewer: React.FC<ResumeViewerProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="border rounded-md overflow-hidden">
+          <iframe 
+            src={resumeUrl} 
+            className="w-full h-[500px] border-0"
+            title={`${studentName}'s Resume`}
+          />
+        </div>
+        
         <div className="flex items-center p-4 border rounded-md bg-secondary">
           <File className="h-8 w-8 text-muted-foreground mr-2" />
           <div className="flex-grow">
             <p>{resumeUrl.split('/').pop()}</p>
           </div>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" onClick={handleDownload}>
             <Download className="h-4 w-4 mr-2" />
             Download
           </Button>

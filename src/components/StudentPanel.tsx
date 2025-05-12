@@ -16,6 +16,7 @@ import ResumeViewer from './ResumeViewer';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../integrations/supabase/client';
 import type { Company } from '../data/mockData';
+import { Download, Eye } from 'lucide-react';
 
 interface StudentPanelProps {
   studentId: string;
@@ -231,6 +232,23 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
     setIsApplyDialogOpen(false);
   };
   
+  const handleDownloadResume = () => {
+    if (resumeUrl) {
+      // Create an anchor element and trigger download
+      const link = document.createElement('a');
+      link.href = resumeUrl;
+      link.download = resumeUrl.split('/').pop() || 'resume.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast({
+        title: "Download Started",
+        description: "Your resume is being downloaded.",
+      });
+    }
+  };
+  
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
@@ -281,13 +299,24 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
                       {resumeStatus === 'rejected' && "Needs Revision"}
                     </div>
                     
-                    <Button 
-                      variant="outline" 
-                      className="w-full" 
-                      onClick={() => setIsViewResumeDialogOpen(true)}
-                    >
-                      View Resume
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        className="flex-1 flex items-center justify-center" 
+                        onClick={() => setIsViewResumeDialogOpen(true)}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="flex-1 flex items-center justify-center" 
+                        onClick={handleDownloadResume}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div>
@@ -362,13 +391,24 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
                     </div>
                   )}
                   
-                  <Button 
-                    onClick={() => setIsViewResumeDialogOpen(true)}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    View My Resume
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={() => setIsViewResumeDialogOpen(true)}
+                      variant="outline"
+                      className="flex-1 flex items-center justify-center"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      View Resume
+                    </Button>
+                    <Button 
+                      onClick={handleDownloadResume}
+                      variant="outline"
+                      className="flex-1 flex items-center justify-center"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -401,6 +441,12 @@ const StudentPanel: React.FC<StudentPanelProps> = ({ studentId }) => {
             status={resumeStatus}
             notes={resumeNotes}
           />
+          <div className="flex justify-end mt-4">
+            <Button onClick={handleDownloadResume} variant="outline" className="flex items-center">
+              <Download className="h-4 w-4 mr-2" />
+              Download Resume
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
       
