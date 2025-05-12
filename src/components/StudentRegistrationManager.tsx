@@ -71,6 +71,7 @@ const StudentRegistrationManager: React.FC = () => {
       }
       
       if (data) {
+        // Type assertion to ensure the data conforms to User[] type
         setStudents(data as User[]);
         setFilteredStudents(data as User[]);
       }
