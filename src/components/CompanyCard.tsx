@@ -31,6 +31,10 @@ const CompanyCard: React.FC<CompanyCardProps> = ({
     month: 'long',
     day: 'numeric'
   });
+
+  // Ensure positions and requirements are arrays
+  const positions = Array.isArray(company.positions) ? company.positions : [];
+  const requirements = Array.isArray(company.requirements) ? company.requirements : [];
   
   return (
     <Card>
@@ -53,21 +57,29 @@ const CompanyCard: React.FC<CompanyCardProps> = ({
         <div>
           <h4 className="text-sm font-medium mb-2">Open Positions:</h4>
           <div className="flex flex-wrap gap-2">
-            {company.positions.map((position, index) => (
-              <Badge key={index} variant="secondary">
-                {position}
-              </Badge>
-            ))}
+            {positions.length > 0 ? (
+              positions.map((position, index) => (
+                <Badge key={index} variant="secondary">
+                  {position}
+                </Badge>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No positions specified</p>
+            )}
           </div>
         </div>
         
         <div>
           <h4 className="text-sm font-medium mb-2">Requirements:</h4>
-          <ul className="list-disc pl-5 text-sm">
-            {company.requirements.map((req, index) => (
-              <li key={index}>{req}</li>
-            ))}
-          </ul>
+          {requirements.length > 0 ? (
+            <ul className="list-disc pl-5 text-sm">
+              {requirements.map((req, index) => (
+                <li key={index}>{req}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No requirements specified</p>
+          )}
         </div>
         
         <div className="flex items-center justify-between">

@@ -25,11 +25,21 @@ const Login: React.FC = () => {
     setError(null);
     
     try {
+      console.log('Attempting login with:', { email, password });
       await login(email, password);
       // Login success handling is done in the AuthContext
+      toast({
+        title: "Login Successful",
+        description: "Welcome to the Campus Recruitment Portal",
+      });
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "An error occurred during login. Please try again.");
+      toast({
+        title: "Login Failed",
+        description: err.message || "Please check your credentials and try again.",
+        variant: "destructive"
+      });
     } finally {
       setIsLoading(false);
     }

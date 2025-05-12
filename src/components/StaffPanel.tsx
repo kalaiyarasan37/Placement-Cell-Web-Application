@@ -128,6 +128,9 @@ const StaffPanel: React.FC = () => {
   // Function to fetch companies
   const fetchCompanies = async () => {
     try {
+      setIsLoading(true);
+      console.log('Fetching companies from Supabase');
+      
       const { data, error } = await supabase
         .from('companies')
         .select('*');
@@ -136,20 +139,34 @@ const StaffPanel: React.FC = () => {
         console.error('Error fetching companies:', error);
         // Fall back to mock data if there's an error
         setLocalCompanies(companies as unknown as Company[]);
+        setIsLoading(false);
         return;
       }
       
+      console.log('Companies data from DB:', data);
+      
       if (data && data.length > 0) {
-        // Cast Supabase data to our Company interface
-        setLocalCompanies(data as unknown as Company[]);
+        // Ensure data types are correct before setting state
+        const processedData = data.map(company => ({
+          ...company,
+          // Ensure positions and requirements are arrays
+          positions: Array.isArray(company.positions) ? company.positions : [],
+          requirements: Array.isArray(company.requirements) ? company.requirements : []
+        }));
+        
+        console.log('Processed companies data:', processedData);
+        setLocalCompanies(processedData as unknown as Company[]);
       } else {
         // Use mock data if no companies in the database
+        console.log('No companies found, using mock data');
         setLocalCompanies(companies as unknown as Company[]);
       }
+      setIsLoading(false);
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error fetching companies:', error);
       // Fall back to mock data on any error
       setLocalCompanies(companies as unknown as Company[]);
+      setIsLoading(false);
     }
   };
   
@@ -318,6 +335,7 @@ const StaffPanel: React.FC = () => {
   };
 
   const handleEditCompany = (company: Company) => {
+    console.log('Editing company:', company);
     setSelectedCompany(company);
     setIsCompanyFormOpen(true);
   };
@@ -357,16 +375,23 @@ const StaffPanel: React.FC = () => {
 
   const handleSaveCompany = async (companyData: Partial<Company>) => {
     try {
+      console.log('Saving company data:', companyData);
+      
+      // Ensure positions and requirements are always arrays
+      const positions = Array.isArray(companyData.positions) ? companyData.positions : [];
+      const requirements = Array.isArray(companyData.requirements) ? companyData.requirements : [];
+      
       if (selectedCompany) {
         // Update existing company
+        console.log('Updating existing company:', selectedCompany.id);
         const { error } = await supabase
           .from('companies')
           .update({
             name: companyData.name,
             description: companyData.description,
             location: companyData.location,
-            positions: companyData.positions,
-            requirements: companyData.requirements,
+            positions: positions,
+            requirements: requirements,
             deadline: companyData.deadline || new Date().toISOString().split('T')[0]
           })
           .eq('id', selectedCompany.id);
@@ -387,15 +412,18 @@ const StaffPanel: React.FC = () => {
         });
       } else {
         // Add new company
+        console.log('Adding new company');
         const newCompanyData = {
           name: companyData.name || '',
           description: companyData.description || '',
           location: companyData.location || '',
-          positions: companyData.positions || [],
-          requirements: companyData.requirements || [],
+          positions: positions,
+          requirements: requirements,
           deadline: companyData.deadline || new Date().toISOString().split('T')[0],
           posted_by: "staff-user"
         };
+        
+        console.log('New company data to insert:', newCompanyData);
         
         const { error } = await supabase
           .from('companies')
@@ -418,9 +446,10 @@ const StaffPanel: React.FC = () => {
       }
       
       setIsCompanyFormOpen(false);
-      // The real-time subscription will update the UI
+      // Force immediate refresh instead of waiting for subscription
+      fetchCompanies();
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error saving company:', error);
       toast({
         title: "Error",
         description: "An unexpected error occurred",
@@ -515,15 +544,21 @@ const StaffPanel: React.FC = () => {
               <div className="text-center py-10">Loading companies...</div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {localCompanies.map(company => (
-                  <CompanyCard 
-                    key={company.id}
-                    company={company}
-                    isEditable={true}
-                    onEdit={() => handleEditCompany(company)}
-                    onDelete={() => handleDeleteCompany(company.id)}
-                  />
-                ))}
+                {localCompanies.length === 0 ? (
+                  <div className="col-span-2 text-center py-10 text-muted-foreground">
+                    No companies found. Click "Add Company" to create one.
+                  </div>
+                ) : (
+                  localCompanies.map(company => (
+                    <CompanyCard 
+                      key={company.id}
+                      company={company}
+                      isEditable={true}
+                      onEdit={() => handleEditCompany(company)}
+                      onDelete={() => handleDeleteCompany(company.id)}
+                    />
+                  ))
+                )}
               </div>
             )}
           </TabsContent>

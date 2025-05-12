@@ -148,12 +148,15 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
     setIsSubmitting(true);
     
     try {
-      // Pass the data back to parent component
-      onSave({
+      // Ensure positions and requirements are arrays
+      const finalData = {
         ...formData,
-        positions: formData.positions || [],
-        requirements: formData.requirements || []
-      });
+        positions: Array.isArray(formData.positions) ? formData.positions : [],
+        requirements: Array.isArray(formData.requirements) ? formData.requirements : []
+      };
+      
+      // Pass the data back to parent component
+      onSave(finalData);
     } catch (error) {
       console.error('Error submitting form:', error);
       toast({
