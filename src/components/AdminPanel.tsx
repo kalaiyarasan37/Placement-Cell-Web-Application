@@ -32,6 +32,7 @@ import {
   Table, TableBody, TableCell, TableHead, 
   TableHeader, TableRow 
 } from '@/components/ui/table';
+import { Company } from '../data/mockData';
 
 // Define the StudentWithResume interface
 interface StudentWithResume {
@@ -46,18 +47,6 @@ interface StudentWithResume {
     name: string;
     email?: string;
   };
-}
-
-// Define Company interface matching the one in StaffPanel
-interface Company {
-  id: string;
-  name: string;
-  description: string;
-  location: string;
-  positions: string[];
-  requirements: string[];
-  deadline: string;
-  posted_by?: string;
 }
 
 const AdminPanel = () => {
