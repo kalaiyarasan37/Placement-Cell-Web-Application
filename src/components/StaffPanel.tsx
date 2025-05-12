@@ -20,6 +20,7 @@ import ResumeViewer from './ResumeViewer';
 import CompanyForm from './CompanyForm';
 import { Plus } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
+import { useAuth } from '../contexts/AuthContext';
 
 // Define the StudentWithResume interface that includes the user property
 interface StudentWithResume {
@@ -37,6 +38,7 @@ interface StudentWithResume {
 }
 
 const StaffPanel: React.FC = () => {
+  const { currentUser } = useAuth(); // Add this line to get the currentUser
   const [activeTab, setActiveTab] = useState("students");
   const [selectedStudent, setSelectedStudent] = useState<StudentWithResume | null>(null);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
