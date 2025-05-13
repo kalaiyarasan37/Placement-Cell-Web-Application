@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,7 +119,11 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
     // Basic validation
     if (!formData.name || !formData.description || !formData.location || !formData.deadline) {
       console.log("Missing required fields", formData);
-      // Silently handle validation without showing error toasts
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -128,7 +133,11 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
     
     if (positions.length === 0 || requirements.length === 0) {
       console.log("Positions or requirements are empty");
-      // Silently handle validation without showing error toasts
+      toast({
+        title: "Error",
+        description: "Please add at least one position and one requirement",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -140,6 +149,8 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
         ...formData,
         positions,
         requirements,
+        // Make sure to remove any ID if this is a new company (to avoid uuid errors)
+        ...(company ? {} : { id: undefined }),
         // Set a default poster ID if none is provided
         posted_by: formData.posted_by || currentUser?.id || 'system'
       };
@@ -148,6 +159,11 @@ const CompanyForm: React.FC<CompanyFormProps> = ({
       onSave(finalData);
     } catch (error) {
       console.error('Error submitting form:', error);
+      toast({
+        title: "Error",
+        description: "Failed to submit form. Please try again.",
+        variant: "destructive"
+      });
       setIsSubmitting(false);
     }
   };

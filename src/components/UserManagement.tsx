@@ -41,6 +41,11 @@ interface User {
   email?: string;
 }
 
+interface AuthUser {
+  id: string;
+  email: string;
+}
+
 interface StudentDetails {
   id: string;
   user_id: string;
@@ -50,6 +55,7 @@ interface StudentDetails {
 
 const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
   const [users, setUsers] = useState<User[]>([]);
+  const [authUsers, setAuthUsers] = useState<Record<string, string>>({});
   const [studentDetails, setStudentDetails] = useState<Record<string, StudentDetails>>({});
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -297,13 +303,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
     try {
       // If editing an existing user
       if (currentUser) {
-        // Update the profile
+        // Update the profile - only update the name since email is not in the profiles table
         const { error } = await supabase
           .from('profiles')
           .update({
             name: formData.name,
-            // Only update email if it has changed and is provided
-            ...(formData.email && formData.email !== currentUser.email ? { email: formData.email } : {})
           })
           .eq('id', currentUser.id);
           
@@ -374,14 +378,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
         
         const newUserId = authData.user.id;
         
-        // Create profile record
+        // Create profile record - Note: don't include email field since it doesn't exist in the profiles table
         const { error: profileError } = await supabase
           .from('profiles')
           .insert({
             id: newUserId,
             name: formData.name,
-            role: userType,
-            email: formData.email
+            role: userType
           });
           
         if (profileError) {
@@ -541,7 +544,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ userType }) => {
                 {filteredUsers.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell>{user.name}</TableCell>
-                    <TableCell>{user.email || 'Not set'}</TableCell>
+                    <TableCell>{authUsers[user.id] || 'Not set'}</TableCell>
                     {userType === 'student' && (
                       <TableCell>
                         <div className="flex gap-2">
