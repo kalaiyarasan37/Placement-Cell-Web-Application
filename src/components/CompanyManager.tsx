@@ -73,10 +73,10 @@ const CompanyManager: React.FC = () => {
       }
       
       if (data) {
-        // Convert the data to match our Company interface - making industry an empty string if missing
+        // Process the data without trying to access nonexistent fields
         const processedData = data.map(item => ({
           ...item,
-          industry: item.industry || '' // Provide a default value for industry
+          // We don't need to add industry here since it's optional in our interface
         }));
         setCompanies(processedData as Company[]);
         setFilteredCompanies(processedData as Company[]);
@@ -126,7 +126,7 @@ const CompanyManager: React.FC = () => {
     
     const filtered = companies.filter(company => 
       company.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      company.industry.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (company.industry ? company.industry.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
       company.location.toLowerCase().includes(searchTerm.toLowerCase())
     );
     
@@ -300,8 +300,9 @@ const CompanyManager: React.FC = () => {
           
           <CompanyForm 
             company={currentCompany} 
-            onSuccess={handleCompanyFormSuccess} 
-            onCancel={() => setIsCompanyFormOpen(false)}
+            onClose={() => setIsCompanyFormOpen(false)}
+            isOpen={isCompanyFormOpen}
+            onSave={handleCompanyFormSuccess}
           />
         </DialogContent>
       </Dialog>
