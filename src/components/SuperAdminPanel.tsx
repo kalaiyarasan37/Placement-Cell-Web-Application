@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   Tabs,
@@ -40,10 +41,11 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
+// Define the Admin interface to fix the typing issue
 interface Admin {
   id: string;
   name: string;
-  email: string;
+  email?: string;
   role: string;
   created_at: string;
 }
@@ -83,25 +85,40 @@ const SuperAdminPanel: React.FC = () => {
         return;
       }
       
-      // Add proper type assertion to fix the 'never' type issue
-      const profileData = data as unknown as Admin[];
+      // Correctly type the data from Supabase to match our Admin interface
+      const profileData = data as Admin[];
       
       // If we have auth data, try to merge in email info
-      const { data: authData } = await supabase.auth.admin.listUsers();
-      
-      let enrichedAdmins = profileData;
-      if (authData && authData.users) {
-        enrichedAdmins = profileData.map(admin => {
-          const authUser = authData.users.find(user => user.id === admin.id);
-          return {
-            ...admin,
-            email: authUser?.email || 'No email found'
-          };
-        });
+      try {
+        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+        
+        if (authError) {
+          console.error('Error fetching auth users:', authError);
+          // Continue with the profiles data we have
+          setAdminUsers(profileData);
+          setFilteredAdmins(profileData);
+          return;
+        }
+        
+        let enrichedAdmins = profileData;
+        if (authData && authData.users) {
+          enrichedAdmins = profileData.map(admin => {
+            const authUser = authData.users.find(user => user.id === admin.id);
+            return {
+              ...admin,
+              email: authUser?.email || 'No email found'
+            };
+          });
+        }
+        
+        setAdminUsers(enrichedAdmins);
+        setFilteredAdmins(enrichedAdmins);
+      } catch (error) {
+        console.error('Error enriching admin data:', error);
+        // Fall back to just using profile data
+        setAdminUsers(profileData);
+        setFilteredAdmins(profileData);
       }
-      
-      setAdminUsers(enrichedAdmins);
-      setFilteredAdmins(enrichedAdmins);
     } catch (error) {
       console.error('Error:', error);
       toast({
