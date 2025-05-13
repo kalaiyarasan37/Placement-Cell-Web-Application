@@ -3,3 +3,10 @@ project_id = "hwruumqduuiivmaxgtfn"
 
 [functions.init-demo-users]
 verify_jwt = false
+
+[auth.roles]
+super_admin = "super_admin"
+admin = "admin" 
+staff = "staff"
+student = "student"
+

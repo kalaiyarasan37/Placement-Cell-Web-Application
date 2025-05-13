@@ -4,24 +4,30 @@ import Login from '../components/Login';
 import AdminPanel from '../components/AdminPanel';
 import StaffPanel from '../components/StaffPanel';
 import StudentPanel from '../components/StudentPanel';
-import { useAuth } from '../contexts/AuthContext';
+import SuperAdminPanel from '../components/SuperAdminPanel';
+import { useAuth, UserRole } from '../contexts/AuthContext';
 
 const Index: React.FC = () => {
-  const { currentUser, userRole } = useAuth();
+  const { currentUser, userRole, isSuperAdmin } = useAuth();
 
   if (!currentUser || !userRole) {
     return <Login />;
   }
 
+  // Check if the user is a super admin first
+  if (isSuperAdmin()) {
+    return <SuperAdminPanel />;
+  }
+
   // Routing based on user role
   switch (userRole) {
-    case 'admin':
+    case UserRole.ADMIN:
       // Admin has complete control with full CRUD operations
       return <AdminPanel />;
-    case 'staff':
+    case UserRole.STAFF:
       // Staff has a dedicated panel with limited privileges
       return <StaffPanel />;
-    case 'student':
+    case UserRole.STUDENT:
       // Students can only access the student panel with their assigned ID
       return <StudentPanel studentId={currentUser.id} />;
     default:

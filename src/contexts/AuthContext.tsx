@@ -5,6 +5,14 @@ import { supabase } from '../integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { demoCredentials } from '../data/demoCredentials';
 
+// Define UserRole enum for better type safety
+export enum UserRole {
+  STUDENT = 'student',
+  STAFF = 'staff',
+  ADMIN = 'admin',
+  SUPER_ADMIN = 'super_admin',
+}
+
 interface AuthContextType {
   currentUser: User | null;
   session: Session | null;
@@ -12,6 +20,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   updateCredentials: (email: string, password: string) => Promise<void>;
+  isSuperAdmin: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,6 +87,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Failed to fetch user role:', error);
     }
+  };
+
+  const isSuperAdmin = () => {
+    return userRole === UserRole.SUPER_ADMIN || currentUser?.email === 'achu73220@gmail.com';
   };
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -229,6 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         logout,
         updateCredentials,
+        isSuperAdmin,
       }}
     >
       {!loading && children}
