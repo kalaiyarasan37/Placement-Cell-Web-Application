@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Tabs,
@@ -23,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { toast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash, Search, X } from "lucide-react";
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -51,6 +50,7 @@ interface Admin {
 
 const SuperAdminPanel: React.FC = () => {
   const { currentUser } = useAuth();
+  const { toast } = useToast();
   const [adminUsers, setAdminUsers] = useState<Admin[]>([]);
   const [filteredAdmins, setFilteredAdmins] = useState<Admin[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,12 +83,15 @@ const SuperAdminPanel: React.FC = () => {
         return;
       }
       
+      // Add proper type assertion to fix the 'never' type issue
+      const profileData = data as unknown as Admin[];
+      
       // If we have auth data, try to merge in email info
       const { data: authData } = await supabase.auth.admin.listUsers();
       
-      let enrichedAdmins = data;
+      let enrichedAdmins = profileData;
       if (authData && authData.users) {
-        enrichedAdmins = data.map(admin => {
+        enrichedAdmins = profileData.map(admin => {
           const authUser = authData.users.find(user => user.id === admin.id);
           return {
             ...admin,
@@ -97,8 +100,8 @@ const SuperAdminPanel: React.FC = () => {
         });
       }
       
-      setAdminUsers(enrichedAdmins as Admin[]);
-      setFilteredAdmins(enrichedAdmins as Admin[]);
+      setAdminUsers(enrichedAdmins);
+      setFilteredAdmins(enrichedAdmins);
     } catch (error) {
       console.error('Error:', error);
       toast({
