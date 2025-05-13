@@ -14,7 +14,7 @@ const Index: React.FC = () => {
     return <Login />;
   }
 
-  // Check if the user is a super admin first
+  // Check if the user is a super admin first (using the function from AuthContext)
   if (isSuperAdmin()) {
     return <SuperAdminPanel />;
   }

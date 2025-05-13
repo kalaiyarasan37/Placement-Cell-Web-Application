@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import {
   Tabs,
   TabsContent,
@@ -82,10 +83,22 @@ const SuperAdminPanel: React.FC = () => {
         return;
       }
       
-      if (data) {
-        setAdminUsers(data as Admin[]);
-        setFilteredAdmins(data as Admin[]);
+      // If we have auth data, try to merge in email info
+      const { data: authData } = await supabase.auth.admin.listUsers();
+      
+      let enrichedAdmins = data;
+      if (authData && authData.users) {
+        enrichedAdmins = data.map(admin => {
+          const authUser = authData.users.find(user => user.id === admin.id);
+          return {
+            ...admin,
+            email: authUser?.email || 'No email found'
+          };
+        });
       }
+      
+      setAdminUsers(enrichedAdmins as Admin[]);
+      setFilteredAdmins(enrichedAdmins as Admin[]);
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -148,7 +161,7 @@ const SuperAdminPanel: React.FC = () => {
     setCurrentAdmin(admin);
     setFormData({
       name: admin.name,
-      email: admin.email,
+      email: admin.email || '',
       password: ''
     });
     setIsAddAdminDialogOpen(true);
@@ -242,7 +255,7 @@ const SuperAdminPanel: React.FC = () => {
           description: `${formData.name}'s profile has been updated.`,
         });
       } else {
-        // Create a new admin user (fixed implementation)
+        // Create a new admin user
         // First create auth user
         const { data: authData, error: authError } = await supabase.auth.admin.createUser({
           email: formData.email,
@@ -256,82 +269,45 @@ const SuperAdminPanel: React.FC = () => {
         
         if (authError || !authData.user) {
           console.error('Error creating admin user:', authError || 'No user returned');
-          
-          // Fall back to regular signup if admin API fails
-          const { data: signupData, error: signupError } = await supabase.auth.signUp({
+          toast({
+            title: "Error",
+            description: `Failed to create admin account. ${authError?.message || 'Unknown error'}`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Create profile record
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            name: formData.name,
             email: formData.email,
-            password: formData.password,
-            options: {
-              data: {
-                name: formData.name,
-                role: 'admin'
-              }
-            }
+            role: 'admin'
           });
           
-          if (signupError || !signupData.user) {
-            console.error('Error with fallback signup:', signupError);
-            toast({
-              title: "Error",
-              description: `Failed to create admin account. ${signupError?.message || 'Unknown error'}`,
-              variant: "destructive"
-            });
-            return;
-          }
-          
-          // Create profile record
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: signupData.user.id,
-              name: formData.name,
-              email: formData.email,
-              role: 'admin'
-            });
-            
-          if (profileError) {
-            console.error('Error creating profile:', profileError);
-            toast({
-              title: "Error",
-              description: `Failed to create admin profile. ${profileError.message}`,
-              variant: "destructive"
-            });
-            return;
-          }
-          
-        } else {
-          // Create profile record with admin user API
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: authData.user.id,
-              name: formData.name,
-              email: formData.email,
-              role: 'admin'
-            });
-            
-          if (profileError) {
-            console.error('Error creating profile:', profileError);
-            toast({
-              title: "Error",
-              description: `Failed to create admin profile. ${profileError.message}`,
-              variant: "destructive"
-            });
-            return;
-          }
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+          toast({
+            title: "Error",
+            description: `Failed to create admin profile. ${profileError.message}`,
+            variant: "destructive"
+          });
+          return;
         }
         
         toast({
           title: "Admin Created",
           description: `${formData.name} has been added as an admin with login credentials.`,
         });
-        
-        // Manually refresh admin list since we just created one
-        fetchAdmins();
       }
       
       // Close the form and reset state
       resetFormState();
+      
+      // Refresh admin list
+      fetchAdmins();
       
     } catch (error) {
       console.error('Error:', error);
@@ -347,6 +323,16 @@ const SuperAdminPanel: React.FC = () => {
     if (!currentAdmin) return;
     
     try {
+      // Delete auth user first
+      const { error: authError } = await supabase.auth.admin.deleteUser(
+        currentAdmin.id
+      );
+      
+      if (authError) {
+        console.error('Error deleting auth user:', authError);
+        // Continue anyway as we still want to delete the profile
+      }
+      
       // Delete from profiles table
       const { error: profileError } = await supabase
         .from('profiles')
@@ -371,6 +357,9 @@ const SuperAdminPanel: React.FC = () => {
       
       // Close the dialog and reset state
       resetFormState();
+      
+      // Refresh admin list
+      fetchAdmins();
       
     } catch (error) {
       console.error('Error:', error);

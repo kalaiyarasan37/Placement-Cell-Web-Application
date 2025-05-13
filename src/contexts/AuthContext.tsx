@@ -1,8 +1,9 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../integrations/supabase/client';
-import { toast } from '@/components/ui/use-toast';
-import { demoCredentials } from '../data/demoCredentials';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
+import { demoCredentials } from '@/data/demoCredentials';
 
 // Define UserRole enum for better type safety
 export enum UserRole {
@@ -90,7 +91,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const isSuperAdmin = () => {
-    return userRole === UserRole.SUPER_ADMIN || currentUser?.email === 'achu73220@gmail.com';
+    // Super admin can be a specific role or specific email addresses
+    return userRole === UserRole.SUPER_ADMIN || 
+           currentUser?.email === 'achu73220@gmail.com' || 
+           (currentUser?.user_metadata?.role === 'super_admin');
   };
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -106,7 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: demoUser.id,
           email: demoUser.email,
           app_metadata: {},
-          user_metadata: { name: demoUser.name },
+          user_metadata: { name: demoUser.name, role: demoUser.role },
           aud: "authenticated",
           created_at: new Date().toISOString()
         } as User;
