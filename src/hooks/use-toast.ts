@@ -1,15 +1,20 @@
-import { Toast, ToastActionElement, ToastProps } from "@/components/ui/toast";
+
 import * as React from "react";
+import { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
 
-type ToasterToast = Toast & {
+// Fix circular reference by defining the base type first
+type ToastBaseProps = {
   id: string;
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: ToastActionElement;
 };
+
+// Then extend it with ToastProps without circular reference
+type ToasterToast = ToastBaseProps & ToastProps;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -133,9 +138,10 @@ function dispatch(action: Action) {
   });
 }
 
-type Toast = Omit<ToasterToast, "id">;
+// Fix circular reference by defining the input type separately
+type ToastInput = Omit<ToasterToast, "id">;
 
-function toast({ ...props }: Toast) {
+function toast(props: ToastInput) {
   const id = genId();
 
   const update = (props: ToasterToast) =>
