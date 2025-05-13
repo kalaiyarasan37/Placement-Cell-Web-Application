@@ -26,6 +26,13 @@ const Login: React.FC = () => {
     
     try {
       console.log('Attempting login with:', { email, password });
+      
+      // Check if super admin login attempt but with wrong credentials
+      if ((email === 'blue67388@gmail.com' && password !== 'superadmin@123') ||
+          (email !== 'blue67388@gmail.com' && password === 'superadmin@123')) {
+        throw new Error("Invalid super admin credentials. Please try again.");
+      }
+      
       await login(email, password);
       // Login success handling is done in the AuthContext
       toast({
@@ -57,6 +64,9 @@ const Login: React.FC = () => {
     } else if (value === "student") {
       setEmail('student@example.com');
       setPassword('student123');
+    } else if (value === "superadmin") {
+      setEmail('blue67388@gmail.com');
+      setPassword('superadmin@123');
     }
   };
 
@@ -79,10 +89,11 @@ const Login: React.FC = () => {
           )}
           
           <Tabs defaultValue="admin" value={activeTab} onValueChange={handleTabChange} className="mb-4">
-            <TabsList className="grid grid-cols-3 w-full">
+            <TabsList className="grid grid-cols-4 w-full">
               <TabsTrigger value="admin">Admin</TabsTrigger>
               <TabsTrigger value="staff">Staff</TabsTrigger>
               <TabsTrigger value="student">Student</TabsTrigger>
+              <TabsTrigger value="superadmin">Super Admin</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -124,6 +135,7 @@ const Login: React.FC = () => {
             {activeTab === "admin" && "Admin credentials: achu73220@gmail.com / 12345678"}
             {activeTab === "staff" && "Demo credentials: staff@example.com / staff123"}
             {activeTab === "student" && "Demo credentials: student@example.com / student123"}
+            {activeTab === "superadmin" && "Super Admin credentials: blue67388@gmail.com / superadmin@123"}
           </p>
         </CardFooter>
       </Card>

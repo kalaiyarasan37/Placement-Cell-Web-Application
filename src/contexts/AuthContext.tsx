@@ -91,14 +91,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const isSuperAdmin = () => {
-    // Super admin can be a specific role or specific email addresses
+    // Check if this is the specific super admin email/credential
+    if (currentUser?.email === 'blue67388@gmail.com') {
+      return true;
+    }
+    
+    // Or check for the role
     return userRole === UserRole.SUPER_ADMIN || 
-           currentUser?.email === 'achu73220@gmail.com' || 
            (currentUser?.user_metadata?.role === 'super_admin');
   };
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      // Special check for super admin
+      if (email === 'blue67388@gmail.com' && password === 'superadmin@123') {
+        // Create a mock super admin user and session
+        const mockUser = {
+          id: 'super-admin-id',
+          email: 'blue67388@gmail.com',
+          app_metadata: {},
+          user_metadata: { name: 'Super Admin', role: 'super_admin' },
+          aud: "authenticated",
+          created_at: new Date().toISOString()
+        } as User;
+
+        const mockSession = {
+          access_token: "super_admin_access_token",
+          refresh_token: "super_admin_refresh_token",
+          expires_in: 3600,
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          user: mockUser
+        } as unknown as Session;
+
+        setCurrentUser(mockUser);
+        setSession(mockSession);
+        setUserRole(UserRole.SUPER_ADMIN);
+
+        toast({
+          title: "Login successful",
+          description: `Logged in as Super Admin.`,
+        });
+        return true;
+      }
+
       // Check if the credentials match one of our demo users
       const demoUser = Object.values(demoCredentials).find(
         user => user.email === email && user.password === password

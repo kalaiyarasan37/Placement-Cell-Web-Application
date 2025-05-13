@@ -24,6 +24,15 @@ export const demoCredentials = {
     name: 'Real Admin User',
     role: 'admin',
     registration_number: 'ADMIN002'
+  },
+  // Super admin user
+  superAdmin: {
+    email: 'blue67388@gmail.com',
+    password: 'superadmin@123',
+    id: '5',
+    name: 'Super Admin User',
+    role: 'super_admin',
+    registration_number: 'SADMIN001'
   }
 };
 
@@ -42,6 +51,10 @@ export const getFormattedDemoCredentials = () => {
     realAdmin: {
       ...demoCredentials.realAdmin,
       id: '00000000-0000-0000-0000-000000000004'
+    },
+    superAdmin: {
+      ...demoCredentials.superAdmin,
+      id: '00000000-0000-0000-0000-000000000005'
     }
   };
 };

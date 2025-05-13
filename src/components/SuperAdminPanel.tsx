@@ -50,6 +50,12 @@ interface Admin {
   created_at: string;
 }
 
+// Define type for auth user to fix 'never' issues
+interface AuthUser {
+  id: string;
+  email?: string;
+}
+
 const SuperAdminPanel: React.FC = () => {
   const { currentUser } = useAuth();
   const { toast } = useToast();
@@ -102,8 +108,9 @@ const SuperAdminPanel: React.FC = () => {
         
         let enrichedAdmins = profileData;
         if (authData && authData.users) {
+          const authUsers = authData.users as unknown as AuthUser[];
           enrichedAdmins = profileData.map(admin => {
-            const authUser = authData.users.find(user => user.id === admin.id);
+            const authUser = authUsers.find(user => user.id === admin.id);
             return {
               ...admin,
               email: authUser?.email || 'No email found'
