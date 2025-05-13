@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -35,10 +34,15 @@ import CompanyForm from './CompanyForm';
 interface Company {
   id: string;
   name: string;
-  industry: string;
+  industry?: string;
   location: string;
   website?: string;
   created_at: string;
+  description: string;
+  positions: string[];
+  deadline: string;
+  requirements: string[];
+  posted_by: string;
 }
 
 const CompanyManager: React.FC = () => {
@@ -69,8 +73,13 @@ const CompanyManager: React.FC = () => {
       }
       
       if (data) {
-        setCompanies(data as Company[]);
-        setFilteredCompanies(data as Company[]);
+        // Convert the data to match our Company interface - making industry an empty string if missing
+        const processedData = data.map(item => ({
+          ...item,
+          industry: item.industry || '' // Provide a default value for industry
+        }));
+        setCompanies(processedData as Company[]);
+        setFilteredCompanies(processedData as Company[]);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -245,7 +254,7 @@ const CompanyManager: React.FC = () => {
                   {filteredCompanies.map((company) => (
                     <TableRow key={company.id}>
                       <TableCell className="font-medium">{company.name}</TableCell>
-                      <TableCell>{company.industry}</TableCell>
+                      <TableCell>{company.industry || 'N/A'}</TableCell>
                       <TableCell>{company.location}</TableCell>
                       <TableCell>{formatDate(company.created_at)}</TableCell>
                       <TableCell>

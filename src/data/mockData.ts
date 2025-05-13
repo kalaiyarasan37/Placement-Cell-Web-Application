@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   username: string;
@@ -29,6 +28,8 @@ export interface Company {
   location: string;
   posted_by: string;  // Using posted_by to match Supabase schema
   created_at?: string; // Added to match Supabase schema
+  industry?: string;   // Make industry optional to match Supabase data
+  website?: string;    // Make website optional as it might be used in some components
 }
 
 // Mock users for login
