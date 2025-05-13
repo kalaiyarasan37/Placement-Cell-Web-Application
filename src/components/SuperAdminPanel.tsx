@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Tabs,
   TabsContent,
@@ -29,6 +28,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import NavBar from './NavBar';
 import AdminPanel from './AdminPanel';
+import SuperAdminDashboard from './SuperAdminDashboard';
+import CompanyManager from './CompanyManager';
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,7 @@ const SuperAdminPanel: React.FC = () => {
     email: '',
     password: '',
   });
+  const [activeTab, setActiveTab] = useState('dashboard');
   
   const fetchAdmins = async () => {
     try {
@@ -96,7 +98,7 @@ const SuperAdminPanel: React.FC = () => {
     }
   };
   
-  useEffect(() => {
+  React.useEffect(() => {
     fetchAdmins();
     
     // Set up real-time subscription for admin changes
@@ -122,7 +124,7 @@ const SuperAdminPanel: React.FC = () => {
   }, []);
   
   // Filter admins based on search term
-  useEffect(() => {
+  React.useEffect(() => {
     if (searchTerm.trim() === '') {
       setFilteredAdmins(adminUsers);
       return;
@@ -240,63 +242,92 @@ const SuperAdminPanel: React.FC = () => {
           description: `${formData.name}'s profile has been updated.`,
         });
       } else {
+        // Create a new admin user (fixed implementation)
         // First create auth user
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
           email: formData.email,
           password: formData.password,
-          options: {
-            data: {
-              name: formData.name,
-              role: 'admin'
-            }
+          email_confirm: true,
+          user_metadata: {
+            name: formData.name,
+            role: 'admin'
           }
         });
         
-        if (authError) {
-          console.error('Error creating auth user:', authError);
-          toast({
-            title: "Error",
-            description: `Failed to create admin account. ${authError.message}`,
-            variant: "destructive"
-          });
-          return;
-        }
-        
-        if (!authData.user || !authData.user.id) {
-          toast({
-            title: "Error",
-            description: "Failed to create admin account. No user ID returned.",
-            variant: "destructive"
-          });
-          return;
-        }
-        
-        const newUserId = authData.user.id;
-        
-        // Create profile record
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: newUserId,
-            name: formData.name,
+        if (authError || !authData.user) {
+          console.error('Error creating admin user:', authError || 'No user returned');
+          
+          // Fall back to regular signup if admin API fails
+          const { data: signupData, error: signupError } = await supabase.auth.signUp({
             email: formData.email,
-            role: 'admin'
+            password: formData.password,
+            options: {
+              data: {
+                name: formData.name,
+                role: 'admin'
+              }
+            }
           });
           
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          toast({
-            title: "Error",
-            description: `Failed to create admin profile. ${profileError.message}`,
-            variant: "destructive"
-          });
-          return;
+          if (signupError || !signupData.user) {
+            console.error('Error with fallback signup:', signupError);
+            toast({
+              title: "Error",
+              description: `Failed to create admin account. ${signupError?.message || 'Unknown error'}`,
+              variant: "destructive"
+            });
+            return;
+          }
+          
+          // Create profile record
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              id: signupData.user.id,
+              name: formData.name,
+              email: formData.email,
+              role: 'admin'
+            });
+            
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+            toast({
+              title: "Error",
+              description: `Failed to create admin profile. ${profileError.message}`,
+              variant: "destructive"
+            });
+            return;
+          }
+          
+        } else {
+          // Create profile record with admin user API
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              id: authData.user.id,
+              name: formData.name,
+              email: formData.email,
+              role: 'admin'
+            });
+            
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+            toast({
+              title: "Error",
+              description: `Failed to create admin profile. ${profileError.message}`,
+              variant: "destructive"
+            });
+            return;
+          }
         }
         
         toast({
           title: "Admin Created",
           description: `${formData.name} has been added as an admin with login credentials.`,
         });
+        
+        // Manually refresh admin list since we just created one
+        fetchAdmins();
       }
       
       // Close the form and reset state
@@ -367,13 +398,29 @@ const SuperAdminPanel: React.FC = () => {
       <div className="container mx-auto py-8 space-y-6">
         <h1 className="text-3xl font-bold">Super Admin Dashboard</h1>
         
-        <Tabs defaultValue="admins">
-          <TabsList className="grid w-full md:w-auto grid-cols-2">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full md:w-auto grid-cols-4">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="admins">Admin Management</TabsTrigger>
+            <TabsTrigger value="companies">Company Management</TabsTrigger>
             <TabsTrigger value="system">System Management</TabsTrigger>
           </TabsList>
           
           <div className="mt-6">
+            <TabsContent value="dashboard">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Dashboard Overview</CardTitle>
+                  <CardDescription>
+                    Key metrics and platform analytics
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SuperAdminDashboard />
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
             <TabsContent value="admins">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -454,6 +501,10 @@ const SuperAdminPanel: React.FC = () => {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+            
+            <TabsContent value="companies">
+              <CompanyManager />
             </TabsContent>
             
             <TabsContent value="system">
