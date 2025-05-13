@@ -1,5 +1,6 @@
 
-// This is just a re-export file to maintain backward compatibility
-import { useToast, toast } from "@/hooks/use-toast";
+// Re-export from the hooks folder
+export { useToast, toast } from "@/hooks/use-toast";
 
-export { useToast, toast };
+// Export the types for use in other files
+export type { ToastActionElement } from "@/components/ui/toast";
