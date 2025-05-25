@@ -74,8 +74,8 @@ const Login: React.FC = () => {
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-recruitment-700 to-recruitment-950">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Campus Recruitment Portal</CardTitle>
-          <CardDescription className="text-center">
+          <CardTitle className="text-2xl font-bold text-center">Placement Cell</CardTitle>
+          <CardDescription className="text-center font-semibold">
             Login to access your recruitment portal account
           </CardDescription>
         </CardHeader>
