@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
-// Define interfaces
+// Define the Admin interface to fix the typing issue
 interface Admin {
   id: string;
   name: string;
@@ -50,66 +50,32 @@ interface Admin {
   created_at: string;
 }
 
-interface Student {
+// Define type for auth user to fix 'never' issues
+interface AuthUser {
   id: string;
-  name: string;
   email?: string;
-  role: string;
-  created_at: string;
-  registration_number?: string;
-}
-
-interface Staff {
-  id: string;
-  name: string;
-  email?: string;
-  role: string;
-  created_at: string;
-  department?: string;
 }
 
 const SuperAdminPanel: React.FC = () => {
   const { currentUser } = useAuth();
   const { toast } = useToast();
-  
-  // Admin states
   const [adminUsers, setAdminUsers] = useState<Admin[]>([]);
   const [filteredAdmins, setFilteredAdmins] = useState<Admin[]>([]);
-  const [adminSearchTerm, setAdminSearchTerm] = useState('');
-  
-  // Student states
-  const [students, setStudents] = useState<Student[]>([]);
-  const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
-  const [studentSearchTerm, setStudentSearchTerm] = useState('');
-  
-  // Staff states
-  const [staffMembers, setStaffMembers] = useState<Staff[]>([]);
-  const [filteredStaff, setFilteredStaff] = useState<Staff[]>([]);
-  const [staffSearchTerm, setStaffSearchTerm] = useState('');
-  
-  // Loading and dialog states
+  const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [currentItem, setCurrentItem] = useState<Admin | Student | Staff | null>(null);
-  const [currentType, setCurrentType] = useState<'admin' | 'student' | 'staff'>('admin');
+  const [currentAdmin, setCurrentAdmin] = useState<Admin | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
-    registration_number: '',
-    department: '',
   });
   const [activeTab, setActiveTab] = useState('dashboard');
   
-  // Generate a unique user ID for new users
-  const generateUserId = () => {
-    return 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
-  };
-
-  // Fetch functions - Updated to handle demo users properly
   const fetchAdmins = async () => {
     try {
+      setIsLoading(true);
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -117,112 +83,65 @@ const SuperAdminPanel: React.FC = () => {
         
       if (error) {
         console.error('Error fetching admins:', error);
+        toast({
+          title: "Error",
+          description: `Failed to fetch admin users: ${error.message}`,
+          variant: "destructive"
+        });
         return;
       }
       
+      // Correctly type the data from Supabase to match our Admin interface
       const profileData = data as Admin[];
-      setAdminUsers(profileData);
-      setFilteredAdmins(profileData);
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  const fetchStudents = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'student');
-        
-      if (error) {
-        console.error('Error fetching students:', error);
-        return;
-      }
       
-      const profileData = data as Student[];
-      setStudents(profileData);
-      setFilteredStudents(profileData);
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  const fetchStaff = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'staff');
+      // If we have auth data, try to merge in email info
+      try {
+        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
         
-      if (error) {
-        console.error('Error fetching staff:', error);
-        return;
+        if (authError) {
+          console.error('Error fetching auth users:', authError);
+          // Continue with the profiles data we have
+          setAdminUsers(profileData);
+          setFilteredAdmins(profileData);
+          return;
+        }
+        
+        let enrichedAdmins = profileData;
+        if (authData && authData.users) {
+          const authUsers = authData.users as unknown as AuthUser[];
+          enrichedAdmins = profileData.map(admin => {
+            const authUser = authUsers.find(user => user.id === admin.id);
+            return {
+              ...admin,
+              email: authUser?.email || 'No email found'
+            };
+          });
+        }
+        
+        setAdminUsers(enrichedAdmins);
+        setFilteredAdmins(enrichedAdmins);
+      } catch (error) {
+        console.error('Error enriching admin data:', error);
+        // Fall back to just using profile data
+        setAdminUsers(profileData);
+        setFilteredAdmins(profileData);
       }
-      
-      const profileData = data as Staff[];
-      setStaffMembers(profileData);
-      setFilteredStaff(profileData);
     } catch (error) {
       console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while fetching admins",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
     }
-  };
-
-  const fetchAllData = async () => {
-    setIsLoading(true);
-    await Promise.all([fetchAdmins(), fetchStudents(), fetchStaff()]);
-    setIsLoading(false);
   };
   
-  // Filter effects
-  useEffect(() => {
-    if (adminSearchTerm.trim() === '') {
-      setFilteredAdmins(adminUsers);
-      return;
-    }
+  React.useEffect(() => {
+    fetchAdmins();
     
-    const filtered = adminUsers.filter(admin => 
-      admin.name.toLowerCase().includes(adminSearchTerm.toLowerCase()) || 
-      admin.email?.toLowerCase().includes(adminSearchTerm.toLowerCase())
-    );
-    
-    setFilteredAdmins(filtered);
-  }, [adminSearchTerm, adminUsers]);
-
-  useEffect(() => {
-    if (studentSearchTerm.trim() === '') {
-      setFilteredStudents(students);
-      return;
-    }
-    
-    const filtered = students.filter(student => 
-      student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || 
-      student.email?.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
-      student.registration_number?.toLowerCase().includes(studentSearchTerm.toLowerCase())
-    );
-    
-    setFilteredStudents(filtered);
-  }, [studentSearchTerm, students]);
-
-  useEffect(() => {
-    if (staffSearchTerm.trim() === '') {
-      setFilteredStaff(staffMembers);
-      return;
-    }
-    
-    const filtered = staffMembers.filter(staff => 
-      staff.name.toLowerCase().includes(staffSearchTerm.toLowerCase()) || 
-      staff.email?.toLowerCase().includes(staffSearchTerm.toLowerCase()) ||
-      staff.department?.toLowerCase().includes(staffSearchTerm.toLowerCase())
-    );
-    
-    setFilteredStaff(filtered);
-  }, [staffSearchTerm, staffMembers]);
-  
-  // Initialize data and subscriptions
-  useEffect(() => {
-    fetchAllData();
-    
+    // Set up real-time subscription for admin changes
     const adminSubscription = supabase
       .channel('admin-changes')
       .on('postgres_changes', 
@@ -233,79 +152,57 @@ const SuperAdminPanel: React.FC = () => {
           filter: 'role=eq.admin' 
         }, 
         () => {
+          console.log('Admin profiles changed, refreshing data');
           fetchAdmins();
-        }
-      )
-      .subscribe();
-
-    const studentSubscription = supabase
-      .channel('student-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'profiles',
-          filter: 'role=eq.student' 
-        }, 
-        () => {
-          fetchStudents();
-        }
-      )
-      .subscribe();
-
-    const staffSubscription = supabase
-      .channel('staff-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'profiles',
-          filter: 'role=eq.staff' 
-        }, 
-        () => {
-          fetchStaff();
         }
       )
       .subscribe();
       
     return () => {
       adminSubscription.unsubscribe();
-      studentSubscription.unsubscribe();
-      staffSubscription.unsubscribe();
     };
   }, []);
   
-  // CRUD handlers
-  const handleAdd = (type: 'admin' | 'student' | 'staff') => {
-    setCurrentItem(null);
-    setCurrentType(type);
-    setFormData({ name: '', email: '', password: '', registration_number: '', department: '' });
-    setIsAddDialogOpen(true);
+  // Filter admins based on search term
+  React.useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredAdmins(adminUsers);
+      return;
+    }
+    
+    const filtered = adminUsers.filter(admin => 
+      admin.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      admin.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    
+    setFilteredAdmins(filtered);
+  }, [searchTerm, adminUsers]);
+  
+  const handleAddAdmin = () => {
+    setCurrentAdmin(null);
+    setFormData({ name: '', email: '', password: '' });
+    setIsAddAdminDialogOpen(true);
   };
   
-  const handleEdit = (item: Admin | Student | Staff, type: 'admin' | 'student' | 'staff') => {
-    setCurrentItem(item);
-    setCurrentType(type);
+  const handleEditAdmin = (admin: Admin) => {
+    setCurrentAdmin(admin);
     setFormData({
-      name: item.name,
-      email: item.email || '',
-      password: '',
-      registration_number: (item as Student).registration_number || '',
-      department: (item as Staff).department || ''
+      name: admin.name,
+      email: admin.email || '',
+      password: ''
     });
-    setIsAddDialogOpen(true);
+    setIsAddAdminDialogOpen(true);
   };
   
-  const handleDelete = (item: Admin | Student | Staff, type: 'admin' | 'student' | 'staff') => {
-    setCurrentItem(item);
-    setCurrentType(type);
+  const handleDeleteAdmin = (admin: Admin) => {
+    setCurrentAdmin(admin);
     setIsDeleteDialogOpen(true);
   };
   
   const resetFormState = () => {
-    setCurrentItem(null);
-    setFormData({ name: '', email: '', password: '', registration_number: '', department: '' });
-    setIsAddDialogOpen(false);
+    setCurrentAdmin(null);
+    setFormData({ name: '', email: '', password: '' });
+    setIsAddAdminDialogOpen(false);
     setIsDeleteDialogOpen(false);
   };
   
@@ -321,6 +218,7 @@ const SuperAdminPanel: React.FC = () => {
       return;
     }
     
+    // Email validation
     if (!formData.email || !formData.email.includes('@')) {
       toast({
         title: "Error",
@@ -330,7 +228,8 @@ const SuperAdminPanel: React.FC = () => {
       return;
     }
 
-    if (!currentItem && (!formData.password || formData.password.length < 6)) {
+    // Password validation when creating a new user
+    if (!currentAdmin && (!formData.password || formData.password.length < 6)) {
       toast({
         title: "Error",
         description: "Password must be at least 6 characters",
@@ -338,115 +237,104 @@ const SuperAdminPanel: React.FC = () => {
       });
       return;
     }
-
-    // Validate specific fields based on type
-    if (currentType === 'student' && !currentItem && !formData.registration_number.trim()) {
-      toast({
-        title: "Error",
-        description: "Registration number is required for students",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (currentType === 'staff' && !formData.department.trim()) {
-      toast({
-        title: "Error",
-        description: "Department is required for staff",
-        variant: "destructive"
-      });
-      return;
-    }
     
     try {
-      if (currentItem) {
-        // Update existing user
-        const updateData: any = {
-          name: formData.name,
-          email: formData.email
-        };
-
-        if (currentType === 'student' && formData.registration_number) {
-          updateData.registration_number = formData.registration_number;
-        }
-
-        if (currentType === 'staff' && formData.department) {
-          updateData.department = formData.department;
-        }
-
+      // If editing an existing admin
+      if (currentAdmin) {
+        // Update the profile
         const { error } = await supabase
           .from('profiles')
-          .update(updateData)
-          .eq('id', currentItem.id);
+          .update({
+            name: formData.name,
+            email: formData.email
+          })
+          .eq('id', currentAdmin.id);
           
         if (error) {
+          console.error('Error updating admin:', error);
           toast({
             title: "Error",
-            description: `Failed to update ${currentType}. ${error.message}`,
+            description: `Failed to update admin. ${error.message}`,
             variant: "destructive"
           });
           return;
         }
         
-        toast({
-          title: `${currentType.charAt(0).toUpperCase() + currentType.slice(1)} Updated`,
-          description: `${formData.name}'s profile has been updated.`,
-        });
-      } else {
-        // Create new user - Direct profile creation for Super Admin
-        const newUserId = generateUserId();
-        
-        const profileData: any = {
-          id: newUserId,
-          name: formData.name,
-          email: formData.email,
-          role: currentType,
-          created_at: new Date().toISOString()
-        };
-
-        if (currentType === 'student' && formData.registration_number) {
-          profileData.registration_number = formData.registration_number;
-        }
-
-        if (currentType === 'staff' && formData.department) {
-          profileData.department = formData.department;
-        }
-
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert(profileData);
+        // If password is provided, update it
+        if (formData.password) {
+          const { error: authError } = await supabase.auth.admin.updateUserById(
+            currentAdmin.id,
+            { password: formData.password }
+          );
           
-        if (profileError) {
-          toast({
-            title: "Error",
-            description: `Failed to create ${currentType} profile. ${profileError.message}`,
-            variant: "destructive"
-          });
-          return;
-        }
-        
-        // If creating a student, also create a student record
-        if (currentType === 'student') {
-          const { error: studentError } = await supabase
-            .from('students')
-            .insert({
-              user_id: newUserId,
-              resume_status: 'pending'
+          if (authError) {
+            console.error('Error updating password:', authError);
+            toast({
+              title: "Warning",
+              description: `Admin updated but password could not be changed. ${authError.message}`,
+              variant: "destructive"
             });
-            
-          if (studentError) {
-            console.error('Error creating student record:', studentError);
           }
         }
         
         toast({
-          title: `${currentType.charAt(0).toUpperCase() + currentType.slice(1)} Created`,
-          description: `${formData.name} has been added as a ${currentType}.`,
+          title: "Admin Updated",
+          description: `${formData.name}'s profile has been updated.`,
+        });
+      } else {
+        // Create a new admin user
+        // First create auth user
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email: formData.email,
+          password: formData.password,
+          email_confirm: true,
+          user_metadata: {
+            name: formData.name,
+            role: 'admin'
+          }
+        });
+        
+        if (authError || !authData.user) {
+          console.error('Error creating admin user:', authError || 'No user returned');
+          toast({
+            title: "Error",
+            description: `Failed to create admin account. ${authError?.message || 'Unknown error'}`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Create profile record
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            name: formData.name,
+            email: formData.email,
+            role: 'admin'
+          });
+          
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+          toast({
+            title: "Error",
+            description: `Failed to create admin profile. ${profileError.message}`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        toast({
+          title: "Admin Created",
+          description: `${formData.name} has been added as an admin with login credentials.`,
         });
       }
       
+      // Close the form and reset state
       resetFormState();
-      fetchAllData();
+      
+      // Refresh admin list
+      fetchAdmins();
       
     } catch (error) {
       console.error('Error:', error);
@@ -458,45 +346,47 @@ const SuperAdminPanel: React.FC = () => {
     }
   };
   
-  const confirmDelete = async () => {
-    if (!currentItem) return;
+  const confirmDeleteAdmin = async () => {
+    if (!currentAdmin) return;
     
     try {
-      // Delete related records first
-      if (currentType === 'student') {
-        const { error: studentError } = await supabase
-          .from('students')
-          .delete()
-          .eq('user_id', currentItem.id);
-          
-        if (studentError) {
-          console.error('Error deleting student record:', studentError);
-        }
+      // Delete auth user first
+      const { error: authError } = await supabase.auth.admin.deleteUser(
+        currentAdmin.id
+      );
+      
+      if (authError) {
+        console.error('Error deleting auth user:', authError);
+        // Continue anyway as we still want to delete the profile
       }
       
-      // Delete the profile
+      // Delete from profiles table
       const { error: profileError } = await supabase
         .from('profiles')
         .delete()
-        .eq('id', currentItem.id);
+        .eq('id', currentAdmin.id);
         
       if (profileError) {
+        console.error('Error deleting profile:', profileError);
         toast({
           title: "Error",
-          description: `Failed to delete ${currentType} profile. ${profileError.message}`,
+          description: `Failed to delete admin profile. ${profileError.message}`,
           variant: "destructive"
         });
         return;
       }
       
       toast({
-        title: `${currentType.charAt(0).toUpperCase() + currentType.slice(1)} Deleted`,
-        description: `${currentItem.name} has been removed.`,
+        title: "Admin Deleted",
+        description: `${currentAdmin.name} has been removed.`,
         variant: "destructive"
       });
       
+      // Close the dialog and reset state
       resetFormState();
-      fetchAllData();
+      
+      // Refresh admin list
+      fetchAdmins();
       
     } catch (error) {
       console.error('Error:', error);
@@ -517,100 +407,6 @@ const SuperAdminPanel: React.FC = () => {
     }).format(date);
   };
 
-  // Render table component
-  const renderTable = (
-    data: any[], 
-    filteredData: any[], 
-    searchTerm: string, 
-    setSearchTerm: (term: string) => void,
-    type: 'admin' | 'student' | 'staff',
-    title: string
-  ) => (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>{title}</CardTitle>
-        <Button onClick={() => handleAdd(type)} variant="default" size="sm">
-          <Plus className="h-4 w-4 mr-2" />
-          Add {type.charAt(0).toUpperCase() + type.slice(1)}
-        </Button>
-      </CardHeader>
-      
-      <CardContent>
-        <div className="mb-4 flex items-center gap-2">
-          <div className="relative flex-grow">
-            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder={`Search ${type}s by name, email${type === 'student' ? ', or registration number' : type === 'staff' ? ', or department' : ''}...`}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8"
-            />
-            {searchTerm && (
-              <button 
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => setSearchTerm('')}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-        
-        {isLoading ? (
-          <div className="text-center py-4">Loading...</div>
-        ) : filteredData.length === 0 ? (
-          <div className="text-center py-4 text-muted-foreground">
-            {searchTerm ? `No ${type}s found matching your search.` : `No ${type}s found. Add some!`}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  {type === 'student' && <TableHead>Registration Number</TableHead>}
-                  {type === 'staff' && <TableHead>Department</TableHead>}
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredData.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>{item.email}</TableCell>
-                    {type === 'student' && <TableCell>{item.registration_number || 'N/A'}</TableCell>}
-                    {type === 'staff' && <TableCell>{item.department || 'N/A'}</TableCell>}
-                    <TableCell>{item.created_at ? formatDate(item.created_at) : 'N/A'}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => handleEdit(item, type)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDelete(item, type)}
-                        >
-                          <Trash className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-
   return (
     <div className="panel-container">
       <NavBar title="Campus Recruitment - Super Admin Panel" />
@@ -619,13 +415,11 @@ const SuperAdminPanel: React.FC = () => {
         <h1 className="text-3xl font-bold">Super Admin Dashboard</h1>
         
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full md:w-auto grid-cols-6">
+          <TabsList className="grid w-full md:w-auto grid-cols-4">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="admins">Admins</TabsTrigger>
-            <TabsTrigger value="students">Students</TabsTrigger>
-            <TabsTrigger value="staff">Staff</TabsTrigger>
-            <TabsTrigger value="companies">Companies</TabsTrigger>
-            <TabsTrigger value="system">System</TabsTrigger>
+            <TabsTrigger value="admins">Admin Management</TabsTrigger>
+            <TabsTrigger value="companies">Company Management</TabsTrigger>
+            <TabsTrigger value="system">System Management</TabsTrigger>
           </TabsList>
           
           <div className="mt-6">
@@ -644,15 +438,85 @@ const SuperAdminPanel: React.FC = () => {
             </TabsContent>
             
             <TabsContent value="admins">
-              {renderTable(adminUsers, filteredAdmins, adminSearchTerm, setAdminSearchTerm, 'admin', 'Admin Users')}
-            </TabsContent>
-
-            <TabsContent value="students">
-              {renderTable(students, filteredStudents, studentSearchTerm, setStudentSearchTerm, 'student', 'Student Users')}
-            </TabsContent>
-
-            <TabsContent value="staff">
-              {renderTable(staffMembers, filteredStaff, staffSearchTerm, setStaffSearchTerm, 'staff', 'Staff Users')}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Admin Users</CardTitle>
+                  <Button onClick={handleAddAdmin} variant="default" size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Admin
+                  </Button>
+                </CardHeader>
+                
+                <CardContent>
+                  <div className="mb-4 flex items-center gap-2">
+                    <div className="relative flex-grow">
+                      <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search admins by name or email..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-8"
+                      />
+                      {searchTerm && (
+                        <button 
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setSearchTerm('')}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {isLoading ? (
+                    <div className="text-center py-4">Loading...</div>
+                  ) : filteredAdmins.length === 0 ? (
+                    <div className="text-center py-4 text-muted-foreground">
+                      {searchTerm ? 'No admins found matching your search.' : 'No admin users found. Add some!'}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Created</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredAdmins.map((admin) => (
+                            <TableRow key={admin.id}>
+                              <TableCell className="font-medium">{admin.name}</TableCell>
+                              <TableCell>{admin.email}</TableCell>
+                              <TableCell>{admin.created_at ? formatDate(admin.created_at) : 'N/A'}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => handleEditAdmin(admin)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm"
+                                    onClick={() => handleDeleteAdmin(admin)}
+                                  >
+                                    <Trash className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
             
             <TabsContent value="companies">
@@ -675,17 +539,17 @@ const SuperAdminPanel: React.FC = () => {
           </div>
         </Tabs>
         
-        {/* Add/Edit Dialog */}
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        {/* Add Admin Dialog */}
+        <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {currentItem ? `Edit ${currentType.charAt(0).toUpperCase() + currentType.slice(1)}` : `Add New ${currentType.charAt(0).toUpperCase() + currentType.slice(1)}`}
+                {currentAdmin ? 'Edit Admin' : 'Add New Admin'}
               </DialogTitle>
               <DialogDescription>
-                {currentItem 
-                  ? `Update ${currentType} information`
-                  : `Enter the details for the new ${currentType}`}
+                {currentAdmin 
+                  ? 'Update admin information'
+                  : 'Enter the details for the new admin user'}
               </DialogDescription>
             </DialogHeader>
             
@@ -697,8 +561,7 @@ const SuperAdminPanel: React.FC = () => {
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder={`Enter ${currentType} name`}
-                    required
+                    placeholder="Enter admin name"
                   />
                 </div>
                 
@@ -709,50 +572,24 @@ const SuperAdminPanel: React.FC = () => {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    placeholder={`Enter ${currentType} email`}
+                    placeholder="Enter admin email"
                     required
                   />
                 </div>
-
-                {currentType === 'student' && (
-                  <div>
-                    <Label htmlFor="registration_number">Registration Number</Label>
-                    <Input 
-                      id="registration_number"
-                      value={formData.registration_number}
-                      onChange={(e) => setFormData({...formData, registration_number: e.target.value})}
-                      placeholder="Enter registration number"
-                      required={!currentItem}
-                    />
-                  </div>
-                )}
-
-                {currentType === 'staff' && (
-                  <div>
-                    <Label htmlFor="department">Department</Label>
-                    <Input 
-                      id="department"
-                      value={formData.department}
-                      onChange={(e) => setFormData({...formData, department: e.target.value})}
-                      placeholder="Enter department"
-                      required
-                    />
-                  </div>
-                )}
                 
                 <div>
                   <Label htmlFor="password">
-                    {currentItem ? "Password (leave blank to keep current)" : "Password"}
+                    {currentAdmin ? "Password (leave blank to keep current)" : "Password"}
                   </Label>
                   <Input 
                     id="password"
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    placeholder={currentItem ? "••••••••" : "Enter password"}
-                    required={!currentItem}
+                    placeholder={currentAdmin ? "••••••••" : "Enter password"}
+                    required={!currentAdmin}
                   />
-                  {!currentItem && (
+                  {!currentAdmin && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Password must be at least 6 characters
                     </p>
@@ -769,7 +606,7 @@ const SuperAdminPanel: React.FC = () => {
                   Cancel
                 </Button>
                 <Button type="submit">
-                  {currentItem ? 'Update' : 'Add'}
+                  {currentAdmin ? 'Update' : 'Add'}
                 </Button>
               </DialogFooter>
             </form>
@@ -782,7 +619,7 @@ const SuperAdminPanel: React.FC = () => {
             <DialogHeader>
               <DialogTitle>Confirm Deletion</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete {currentType} {currentItem?.name}? This action cannot be undone.
+                Are you sure you want to delete admin {currentAdmin?.name}? This action cannot be undone.
               </DialogDescription>
             </DialogHeader>
             
@@ -797,7 +634,7 @@ const SuperAdminPanel: React.FC = () => {
               <Button 
                 type="button" 
                 variant="destructive" 
-                onClick={confirmDelete}
+                onClick={confirmDeleteAdmin}
               >
                 Delete
               </Button>
