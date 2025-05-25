@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Tabs,
@@ -83,7 +82,6 @@ const AdminPanel = () => {
         
       if (error) {
         console.error('Error fetching companies:', error);
-        // No error toast, just log to console
         setIsLoading(false);
         return;
       }
@@ -91,10 +89,8 @@ const AdminPanel = () => {
       console.log('Companies data from DB:', data);
       
       if (data && data.length > 0) {
-        // Ensure data types are correct before setting state
         const processedData = data.map(company => ({
           ...company,
-          // Ensure positions and requirements are arrays
           positions: Array.isArray(company.positions) ? company.positions : [],
           requirements: Array.isArray(company.requirements) ? company.requirements : []
         }));
@@ -112,13 +108,13 @@ const AdminPanel = () => {
     }
   };
 
-  // Function to fetch students with their resume data
+  // Function to fetch students with their resume data - Fixed to handle permissions
   const fetchStudents = async () => {
     try {
-      // First get all profiles that are students
+      // Get all student profiles first
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, name, role')
+        .select('id, name, role, email')
         .eq('role', 'student');
         
       if (profilesError) {
@@ -126,14 +122,13 @@ const AdminPanel = () => {
         return;
       }
 
-      // Get student resume data - safely handle profiles possibly being null/empty
       if (!profiles || profiles.length === 0) {
         console.log('No student profiles found');
         setLocalStudents([]);
         return;
       }
       
-      // Then get student resume data
+      // Get student resume data
       const { data: students, error: studentsError } = await supabase
         .from('students')
         .select('*');
@@ -143,39 +138,24 @@ const AdminPanel = () => {
         return;
       }
       
-      // Get user emails from auth - safely handle possible auth errors
-      let authUsers: any[] = [];
-      try {
-        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-        if (!authError && authData?.users) {
-          authUsers = authData.users;
-        } else if (authError) {
-          console.error('Error fetching auth users:', authError);
-        }
-      } catch (error) {
-        console.error('Error accessing auth users:', error);
-      }
-      
-      // Safely combine the data
+      // Combine the data without trying to access auth admin API
       const combinedData = profiles.map(profile => {
         if (!profile) return null;
         
         const studentData = students?.find(s => s?.user_id === profile.id) || null;
-        const authUser = authUsers?.find(u => u?.id === profile.id) || null;
         
-        // Only add if we have valid profile data
         if (profile.id && profile.name) {
           return {
             id: profile.id,
             name: profile.name,
-            course: "Not specified", // These fields would need to be added to your database
-            year: 1, // Placeholder value
+            course: "Not specified",
+            year: 1,
             resumeUrl: studentData?.resume_url || undefined,
             resumeStatus: (studentData?.resume_status as 'pending' | 'approved' | 'rejected') || 'pending',
-            resumeNotes: '', // Initialize with empty string since resume_notes might not exist in the schema
+            resumeNotes: '',
             user: {
               name: profile.name,
-              email: authUser?.email
+              email: profile.email || 'No email provided'
             }
           } as StudentWithResume;
         }
@@ -216,11 +196,6 @@ const AdminPanel = () => {
       if (companyError || studentError || staffError || resumeError) {
         console.error('Error fetching statistics:', 
                      { companyError, studentError, staffError, resumeError });
-        toast({
-          title: "Error",
-          description: "Failed to load dashboard statistics",
-          variant: "destructive",
-        });
         return;
       }
 
@@ -247,11 +222,6 @@ const AdminPanel = () => {
       });
     } catch (error) {
       console.error('Error:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred while fetching statistics",
-        variant: "destructive",
-      });
     }
   };
   
@@ -267,11 +237,6 @@ const AdminPanel = () => {
       
       if (studentError) {
         console.error('Error fetching student activities:', studentError);
-        toast({
-          title: "Error",
-          description: `Failed to load recent activities: ${studentError.message}`,
-          variant: "destructive",
-        });
         return;
       }
       
@@ -291,7 +256,6 @@ const AdminPanel = () => {
         
         // Merge the data
         const activities = studentData.map((student: any) => {
-          // Check if student is valid before accessing properties
           if (!student) return null;
           
           const profile = profileData?.find((p: any) => p.id === student.user_id);
@@ -304,7 +268,7 @@ const AdminPanel = () => {
             studentId: student.user_id,
             studentName: profile ? profile.name : 'Unknown Student',
           };
-        }).filter(Boolean); // Remove any null values
+        }).filter(Boolean);
         
         setRecentActivities(activities);
       } else {
@@ -312,11 +276,6 @@ const AdminPanel = () => {
       }
     } catch (error) {
       console.error('Error:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred while fetching activities",
-        variant: "destructive",
-      });
     } finally {
       setIsLoading(false);
     }
@@ -331,7 +290,6 @@ const AdminPanel = () => {
   const handleApproveResume = async () => {
     if (selectedStudent) {
       try {
-        // Update in Supabase - only update properties known to exist in the schema
         const { error } = await supabase
           .from('students')
           .update({ resume_status: 'approved' })
@@ -347,7 +305,6 @@ const AdminPanel = () => {
           return;
         }
         
-        // Update local state for immediate UI feedback
         setSelectedStudent({ ...selectedStudent, resumeStatus: 'approved' });
         setLocalStudents(localStudents.map(s => 
           s.id === selectedStudent.id ? { ...s, resumeStatus: 'approved' } : s
@@ -371,7 +328,6 @@ const AdminPanel = () => {
   const handleRejectResume = async () => {
     if (selectedStudent) {
       try {
-        // Update in Supabase - only update properties known to exist in the schema
         const { error } = await supabase
           .from('students')
           .update({ resume_status: 'rejected' })
@@ -387,7 +343,6 @@ const AdminPanel = () => {
           return;
         }
         
-        // Update local state for immediate UI feedback
         setSelectedStudent({ ...selectedStudent, resumeStatus: 'rejected' });
         setLocalStudents(localStudents.map(s => 
           s.id === selectedStudent.id ? { ...s, resumeStatus: 'rejected' } : s
@@ -411,8 +366,6 @@ const AdminPanel = () => {
   const handleUpdateNotes = async (notes: string) => {
     if (selectedStudent) {
       try {
-        // We don't try to update resume_notes in Supabase since it doesn't exist in the schema
-        // Only update the local state
         setSelectedStudent({ ...selectedStudent, resumeNotes: notes });
         setLocalStudents(localStudents.map(s => 
           s.id === selectedStudent.id ? { ...s, resumeNotes: notes } : s
@@ -447,7 +400,6 @@ const AdminPanel = () => {
 
   const handleDeleteCompany = async (companyId: string) => {
     try {
-      // Delete from Supabase
       const { error } = await supabase
         .from('companies')
         .delete()
@@ -455,11 +407,14 @@ const AdminPanel = () => {
         
       if (error) {
         console.error('Error deleting company:', error);
-        // Don't show error toast
         return;
       }
       
-      // The real-time subscription will update the UI
+      toast({
+        title: "Success",
+        description: "Company deleted successfully",
+      });
+      
     } catch (error) {
       console.error('Error:', error);
     }
@@ -469,12 +424,10 @@ const AdminPanel = () => {
     try {
       console.log('Saving company data:', companyData);
       
-      // Ensure positions and requirements are always arrays
       const positions = Array.isArray(companyData.positions) ? companyData.positions : [];
       const requirements = Array.isArray(companyData.requirements) ? companyData.requirements : [];
       
       if (selectedCompany) {
-        // Update existing company
         console.log('Updating existing company:', selectedCompany.id);
         const { error } = await supabase
           .from('companies')
@@ -503,7 +456,6 @@ const AdminPanel = () => {
           description: "Company updated successfully",
         });
       } else {
-        // Add new company
         console.log('Adding new company');
         const newCompanyData = {
           name: companyData.name || '',
@@ -541,7 +493,6 @@ const AdminPanel = () => {
       }
       
       setIsCompanyFormOpen(false);
-      // Force immediate refresh instead of waiting for subscription
       fetchCompanies();
     } catch (error) {
       console.error('Error saving company:', error);
@@ -600,7 +551,6 @@ const AdminPanel = () => {
       )
       .subscribe();
       
-    // Clean up subscription when component unmounts
     return () => {
       companiesSubscription.unsubscribe();
       profilesSubscription.unsubscribe();

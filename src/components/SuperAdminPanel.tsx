@@ -40,13 +40,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 // Define interfaces
 interface Admin {
@@ -73,11 +66,6 @@ interface Staff {
   role: string;
   created_at: string;
   department?: string;
-}
-
-interface AuthUser {
-  id: string;
-  email?: string;
 }
 
 const SuperAdminPanel: React.FC = () => {
@@ -114,7 +102,12 @@ const SuperAdminPanel: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState('dashboard');
   
-  // Fetch functions
+  // Generate a unique user ID for new users
+  const generateUserId = () => {
+    return 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
+  };
+
+  // Fetch functions - Updated to handle demo users properly
   const fetchAdmins = async () => {
     try {
       const { data, error } = await supabase
@@ -128,34 +121,8 @@ const SuperAdminPanel: React.FC = () => {
       }
       
       const profileData = data as Admin[];
-      
-      try {
-        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-        
-        if (authError) {
-          setAdminUsers(profileData);
-          setFilteredAdmins(profileData);
-          return;
-        }
-        
-        let enrichedAdmins = profileData;
-        if (authData && authData.users) {
-          const authUsers = authData.users as unknown as AuthUser[];
-          enrichedAdmins = profileData.map(admin => {
-            const authUser = authUsers.find(user => user.id === admin.id);
-            return {
-              ...admin,
-              email: authUser?.email || 'No email found'
-            };
-          });
-        }
-        
-        setAdminUsers(enrichedAdmins);
-        setFilteredAdmins(enrichedAdmins);
-      } catch (error) {
-        setAdminUsers(profileData);
-        setFilteredAdmins(profileData);
-      }
+      setAdminUsers(profileData);
+      setFilteredAdmins(profileData);
     } catch (error) {
       console.error('Error:', error);
     }
@@ -174,28 +141,8 @@ const SuperAdminPanel: React.FC = () => {
       }
       
       const profileData = data as Student[];
-      
-      try {
-        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-        
-        let enrichedStudents = profileData;
-        if (!authError && authData && authData.users) {
-          const authUsers = authData.users as unknown as AuthUser[];
-          enrichedStudents = profileData.map(student => {
-            const authUser = authUsers.find(user => user.id === student.id);
-            return {
-              ...student,
-              email: authUser?.email || 'No email found'
-            };
-          });
-        }
-        
-        setStudents(enrichedStudents);
-        setFilteredStudents(enrichedStudents);
-      } catch (error) {
-        setStudents(profileData);
-        setFilteredStudents(profileData);
-      }
+      setStudents(profileData);
+      setFilteredStudents(profileData);
     } catch (error) {
       console.error('Error:', error);
     }
@@ -214,28 +161,8 @@ const SuperAdminPanel: React.FC = () => {
       }
       
       const profileData = data as Staff[];
-      
-      try {
-        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-        
-        let enrichedStaff = profileData;
-        if (!authError && authData && authData.users) {
-          const authUsers = authData.users as unknown as AuthUser[];
-          enrichedStaff = profileData.map(staff => {
-            const authUser = authUsers.find(user => user.id === staff.id);
-            return {
-              ...staff,
-              email: authUser?.email || 'No email found'
-            };
-          });
-        }
-        
-        setStaffMembers(enrichedStaff);
-        setFilteredStaff(enrichedStaff);
-      } catch (error) {
-        setStaffMembers(profileData);
-        setFilteredStaff(profileData);
-      }
+      setStaffMembers(profileData);
+      setFilteredStaff(profileData);
     } catch (error) {
       console.error('Error:', error);
     }
@@ -461,52 +388,20 @@ const SuperAdminPanel: React.FC = () => {
           return;
         }
         
-        if (formData.password) {
-          const { error: authError } = await supabase.auth.admin.updateUserById(
-            currentItem.id,
-            { password: formData.password }
-          );
-          
-          if (authError) {
-            toast({
-              title: "Warning",
-              description: `${currentType} updated but password could not be changed. ${authError.message}`,
-              variant: "destructive"
-            });
-          }
-        }
-        
         toast({
           title: `${currentType.charAt(0).toUpperCase() + currentType.slice(1)} Updated`,
           description: `${formData.name}'s profile has been updated.`,
         });
       } else {
-        // Create new user
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email: formData.email,
-          password: formData.password,
-          email_confirm: true,
-          user_metadata: {
-            name: formData.name,
-            role: currentType
-          }
-        });
+        // Create new user - Direct profile creation for Super Admin
+        const newUserId = generateUserId();
         
-        if (authError || !authData.user) {
-          toast({
-            title: "Error",
-            description: `Failed to create ${currentType} account. ${authError?.message || 'Unknown error'}`,
-            variant: "destructive"
-          });
-          return;
-        }
-        
-        // Create profile record
         const profileData: any = {
-          id: authData.user.id,
+          id: newUserId,
           name: formData.name,
           email: formData.email,
-          role: currentType
+          role: currentType,
+          created_at: new Date().toISOString()
         };
 
         if (currentType === 'student' && formData.registration_number) {
@@ -528,6 +423,20 @@ const SuperAdminPanel: React.FC = () => {
             variant: "destructive"
           });
           return;
+        }
+        
+        // If creating a student, also create a student record
+        if (currentType === 'student') {
+          const { error: studentError } = await supabase
+            .from('students')
+            .insert({
+              user_id: newUserId,
+              resume_status: 'pending'
+            });
+            
+          if (studentError) {
+            console.error('Error creating student record:', studentError);
+          }
         }
         
         toast({
@@ -553,14 +462,19 @@ const SuperAdminPanel: React.FC = () => {
     if (!currentItem) return;
     
     try {
-      const { error: authError } = await supabase.auth.admin.deleteUser(
-        currentItem.id
-      );
-      
-      if (authError) {
-        console.error('Error deleting auth user:', authError);
+      // Delete related records first
+      if (currentType === 'student') {
+        const { error: studentError } = await supabase
+          .from('students')
+          .delete()
+          .eq('user_id', currentItem.id);
+          
+        if (studentError) {
+          console.error('Error deleting student record:', studentError);
+        }
       }
       
+      // Delete the profile
       const { error: profileError } = await supabase
         .from('profiles')
         .delete()
