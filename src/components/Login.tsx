@@ -130,14 +130,14 @@ const Login: React.FC = () => {
           </form>
         </CardContent>
         
-        <CardFooter className="flex flex-col">
-          <p className="text-sm text-muted-foreground text-center w-full">
+       {/* <CardFooter className="flex flex-col">
+         <p className="text-sm text-muted-foreground text-center w-full">
             {activeTab === "admin" && "Admin credentials: achu73220@gmail.com / 12345678"}
             {activeTab === "staff" && "Demo credentials: staff@example.com / staff123"}
             {activeTab === "student" && "Demo credentials: student@example.com / student123"}
             {activeTab === "superadmin" && "Super Admin credentials: blue67388@gmail.com / superadmin@123"}
           </p>
-        </CardFooter>
+        </CardFooter> */}
       </Card>
     </div>
   );
